@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
-    const socketPath = `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`;
+    const socketPath = process.env.CLOUD_SQL_CONNECTION_NAME;
     logger.info(`Attempting to connect to Cloud SQL using socket path: ${socketPath}`);
 
     const config = {
@@ -11,15 +11,14 @@ const createSequelizeInstance = () => {
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
+      host: '/cloudsql',
       dialectOptions: {
-        socketPath,
+        socketPath: `/cloudsql/${socketPath}`,
         connectTimeout: 60000,
         statement_timeout: 60000,
         idle_in_transaction_session_timeout: 60000,
         keepAlive: true,
-        ssl: false,
-        // Add Cloud SQL IAM authentication
-        googleServiceAccount: 'p856401495068-cuescq@gcp-sa-cloud-sql.iam.gserviceaccount.com'
+        ssl: false
       },
       pool: {
         max: 5,
@@ -37,9 +36,8 @@ const createSequelizeInstance = () => {
 
     logger.info('Initializing production PostgreSQL connection with config:', {
       database: config.database,
-      socketPath,
-      username: config.username,
-      serviceAccount: config.dialectOptions.googleServiceAccount
+      socketPath: config.dialectOptions.socketPath,
+      username: config.username
     });
 
     return new Sequelize(config);
