@@ -41,6 +41,7 @@ const defineModels = () => {
     Message: require('../models/message')(sequelize, DataTypes),
     Customer: require('../models/customer')(sequelize, DataTypes),
     Purchase: require('../models/purchase')(sequelize, DataTypes),
+    PurchaseItem: require('../models/purchaseItem')(sequelize, DataTypes),
     Attachment: require('../models/attachment')(sequelize, DataTypes),
     PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
   };
