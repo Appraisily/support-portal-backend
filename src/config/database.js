@@ -2,36 +2,36 @@ const { Sequelize, DataTypes } = require('sequelize');
 const logger = require('../utils/logger');
 
 const createSequelizeInstance = () => {
-  const config = {
-    dialect: 'postgres',
-    port: process.env.DB_PORT || 5432,
-    database: process.env.DB_NAME || 'support_portal',
-    username: process.env.DB_USER || 'support_portal_user',
-    password: process.env.DB_PASSWORD,
-    dialectOptions: {
-      // For Cloud SQL
-      socketPath: process.env.NODE_ENV === 'production'
-        ? `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`
-        : undefined,
-      ssl: process.env.NODE_ENV === 'production' ? {
-        rejectUnauthorized: false
-      } : false
-    },
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    },
-    logging: (msg) => logger.debug(msg)
-  };
-
-  // Only set host if not using socket
-  if (!config.dialectOptions.socketPath) {
-    config.host = process.env.DB_HOST || 'localhost';
+  if (process.env.NODE_ENV === 'production') {
+    const config = {
+      dialect: 'postgres',
+      port: process.env.DB_PORT || 5432,
+      database: process.env.DB_NAME || 'support_portal',
+      username: process.env.DB_USER || 'support_portal_user',
+      password: process.env.DB_PASSWORD,
+      dialectOptions: {
+        socketPath: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
+        ssl: {
+          rejectUnauthorized: false
+        }
+      },
+      pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      },
+      logging: (msg) => logger.debug(msg)
+    };
+    return new Sequelize(config);
+  } else {
+    // Use SQLite for development
+    return new Sequelize({
+      dialect: 'sqlite',
+      storage: './dev.sqlite',
+      logging: (msg) => logger.debug(msg)
+    });
   }
-
-  return new Sequelize(config);
 };
 
 const sequelize = createSequelizeInstance();
@@ -62,11 +62,11 @@ const defineModels = () => {
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
-    logger.info('Connected to PostgreSQL database');
+    logger.info('Database connected successfully');
 
     // Sync models in development
     if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync();
+      await sequelize.sync({ alter: true });
       logger.info('Database models synchronized');
     }
   } catch (error) {
