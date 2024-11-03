@@ -1,4 +1,3 @@
-// src/models/purchaseItem.js
 module.exports = (sequelize, DataTypes) => {
   const PurchaseItem = sequelize.define('PurchaseItem', {
     id: {
@@ -22,6 +21,14 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       validate: {
         min: 0
+      }
+    },
+    purchaseId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'Purchases',
+        key: 'id'
       }
     }
   }, {
