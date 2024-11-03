@@ -5,11 +5,14 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies
-RUN npm ci --only=production
+# Install ALL dependencies (including devDependencies temporarily)
+RUN npm install
 
 # Copy application code
 COPY . .
+
+# Remove devDependencies
+RUN npm prune --production
 
 # Set production environment
 ENV NODE_ENV=production
