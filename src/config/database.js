@@ -17,7 +17,9 @@ const createSequelizeInstance = () => {
         statement_timeout: 60000,
         idle_in_transaction_session_timeout: 60000,
         keepAlive: true,
-        ssl: false
+        ssl: false,
+        // Add Cloud SQL IAM authentication
+        googleServiceAccount: 'p856401495068-cuescq@gcp-sa-cloud-sql.iam.gserviceaccount.com'
       },
       pool: {
         max: 5,
@@ -36,7 +38,8 @@ const createSequelizeInstance = () => {
     logger.info('Initializing production PostgreSQL connection with config:', {
       database: config.database,
       socketPath,
-      username: config.username
+      username: config.username,
+      serviceAccount: config.dialectOptions.googleServiceAccount
     });
 
     return new Sequelize(config);
