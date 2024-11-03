@@ -11,9 +11,10 @@ const createSequelizeInstance = () => {
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
+      host: process.env.DB_HOST,
       dialectOptions: {
         socketPath,
-        connectTimeout: 60000, // 60 seconds
+        connectTimeout: 60000,
         statement_timeout: 60000,
         idle_in_transaction_session_timeout: 60000,
         keepAlive: true
@@ -25,22 +26,16 @@ const createSequelizeInstance = () => {
         idle: 10000,
         evict: 60000,
         retry: {
-          match: [
-            /SequelizeConnectionError/,
-            /SequelizeConnectionRefusedError/,
-            /SequelizeHostNotFoundError/,
-            /SequelizeHostNotReachableError/,
-            /SequelizeInvalidConnectionError/,
-            /SequelizeConnectionTimedOutError/,
-            /TimeoutError/,
-            /Operation timeout/,
-            /ECONNREFUSED/,
-          ],
           max: 5
         }
       },
       logging: (msg) => logger.debug(msg)
     };
+
+    // Remove host if using socket
+    if (socketPath) {
+      delete config.host;
+    }
 
     logger.info('Initializing production PostgreSQL connection with config:', {
       database: config.database,
@@ -53,7 +48,7 @@ const createSequelizeInstance = () => {
     logger.info('Initializing development SQLite connection');
     return new Sequelize({
       dialect: 'sqlite',
-      storage: './dev.sqlite',
+      storage: ':memory:',
       logging: (msg) => logger.debug(msg)
     });
   }
@@ -85,18 +80,29 @@ const defineModels = () => {
 };
 
 const connectDB = async () => {
-  try {
-    await sequelize.authenticate();
-    logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
+  let retries = 5;
+  
+  while (retries > 0) {
+    try {
+      await sequelize.authenticate();
+      logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
-    // Sync models in development
-    if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync({ alter: true });
-      logger.info('Database models synchronized');
+      // Sync models in development
+      if (process.env.NODE_ENV === 'development') {
+        await sequelize.sync({ alter: true });
+        logger.info('Database models synchronized');
+      }
+      
+      return;
+    } catch (error) {
+      retries--;
+      if (retries === 0) {
+        logger.error('Database connection failed after all retries:', error);
+        process.exit(1);
+      }
+      logger.warn(`Database connection attempt failed. Retrying... (${retries} attempts remaining)`);
+      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retrying
     }
-  } catch (error) {
-    logger.error('Database connection failed:', error);
-    process.exit(1);
   }
 };
 
