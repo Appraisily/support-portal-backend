@@ -40,7 +40,7 @@ steps:
       - '--vpc-connector'
       - 'projects/$PROJECT_ID/locations/us-central1/connectors/cloud-sql-connector'
       - '--set-secrets'
-      - 'DB_HOST=DB_HOST:latest,DB_PORT=DB_PORT:latest,DB_NAME=DB_NAME:latest,DB_USER=DB_USER:latest,DB_PASSWORD=DB_PASSWORD:latest,CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest'
+      - 'DB_HOST=DB_HOST:latest,DB_PORT=DB_PORT:latest,DB_NAME=DB_NAME:latest,DB_USER=DB_USER:latest,DB_PASSWORD=DB_PASSWORD:latest,CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,STORAGE_BUCKET=STORAGE_BUCKET:latest'
 
 images:
   - 'gcr.io/$PROJECT_ID/support-portal-backend'
