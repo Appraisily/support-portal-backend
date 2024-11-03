@@ -40,7 +40,16 @@ steps:
       - '--vpc-connector'
       - 'projects/$PROJECT_ID/locations/us-central1/connectors/cloud-sql-connector'
       - '--set-secrets'
-      - 'DB_HOST=DB_HOST:latest,DB_PORT=DB_PORT:latest,DB_NAME=DB_NAME:latest,DB_USER=DB_USER:latest,DB_PASSWORD=DB_PASSWORD:latest,CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest'
+      - >-
+        DB_HOST=DB_HOST:latest,
+        DB_PORT=DB_PORT:latest,
+        DB_NAME=DB_NAME:latest,
+        DB_USER=DB_USER:latest,
+        DB_PASSWORD=DB_PASSWORD:latest,
+        CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,
+        GMAIL_CLIENT_ID=GMAIL_CLIENT_ID:latest,
+        GMAIL_CLIENT_SECRET=GMAIL_CLIENT_SECRET:latest,
+        GMAIL_REFRESH_TOKEN=GMAIL_REFRESH_TOKEN:latest
 
 images:
   - 'gcr.io/$PROJECT_ID/support-portal-backend'
