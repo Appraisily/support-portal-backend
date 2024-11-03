@@ -3,31 +3,51 @@ const logger = require('../utils/logger');
 
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
+    const socketPath = `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`;
+    logger.info(`Attempting to connect to Cloud SQL using socket path: ${socketPath}`);
+
     const config = {
       dialect: 'postgres',
-      host: process.env.DB_HOST || '/cloudsql/civil-forge-403609:us-central1:support-portal-db',
-      port: process.env.DB_PORT || 5432,
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
       dialectOptions: {
-        // Remove socketPath from here as we're using host
-        ssl: false
+        socketPath,
+        connectTimeout: 60000, // 60 seconds
+        statement_timeout: 60000,
+        idle_in_transaction_session_timeout: 60000,
+        keepAlive: true
       },
       pool: {
         max: 5,
         min: 0,
-        acquire: 30000,
-        idle: 10000
+        acquire: 60000,
+        idle: 10000,
+        evict: 60000,
+        retry: {
+          match: [
+            /SequelizeConnectionError/,
+            /SequelizeConnectionRefusedError/,
+            /SequelizeHostNotFoundError/,
+            /SequelizeHostNotReachableError/,
+            /SequelizeInvalidConnectionError/,
+            /SequelizeConnectionTimedOutError/,
+            /TimeoutError/,
+            /Operation timeout/,
+            /ECONNREFUSED/,
+          ],
+          max: 5
+        }
       },
       logging: (msg) => logger.debug(msg)
     };
 
-    logger.info('Initializing production PostgreSQL connection', {
+    logger.info('Initializing production PostgreSQL connection with config:', {
       database: config.database,
-      host: config.host,
+      socketPath,
       username: config.username
     });
+
     return new Sequelize(config);
   } else {
     logger.info('Initializing development SQLite connection');
