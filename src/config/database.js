@@ -3,53 +3,29 @@ const logger = require('../utils/logger');
 
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
-    const socketPath = `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`;
-    logger.info(`Attempting to connect to Cloud SQL using socket path: ${socketPath}`);
-
     const config = {
       dialect: 'postgres',
+      host: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
-      host: process.env.DB_HOST,
-      dialectOptions: {
-        socketPath,
-        connectTimeout: 60000,
-        statement_timeout: 60000,
-        idle_in_transaction_session_timeout: 60000,
-        keepAlive: true
-      },
       pool: {
         max: 5,
         min: 0,
-        acquire: 60000,
+        acquire: 30000,
         idle: 10000,
-        evict: 60000,
-        retry: {
-          max: 5
-        }
       },
-      logging: (msg) => logger.debug(msg)
+      logging: (msg) => logger.debug(msg),
     };
 
-    // Remove host if using socket
-    if (socketPath) {
-      delete config.host;
-    }
-
-    logger.info('Initializing production PostgreSQL connection with config:', {
-      database: config.database,
-      socketPath,
-      username: config.username
-    });
-
+    logger.info('Initializing production PostgreSQL connection');
     return new Sequelize(config);
   } else {
     logger.info('Initializing development SQLite connection');
     return new Sequelize({
       dialect: 'sqlite',
-      storage: ':memory:',
-      logging: (msg) => logger.debug(msg)
+      storage: './dev.sqlite',
+      logging: (msg) => logger.debug(msg),
     });
   }
 };
@@ -66,11 +42,11 @@ const defineModels = () => {
     Purchase: require('../models/purchase')(sequelize, DataTypes),
     PurchaseItem: require('../models/purchaseItem')(sequelize, DataTypes),
     Attachment: require('../models/attachment')(sequelize, DataTypes),
-    PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
+    PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes),
   };
 
   // Define associations
-  Object.values(models).forEach(model => {
+  Object.values(models).forEach((model) => {
     if (model.associate) {
       model.associate(models);
     }
@@ -80,34 +56,23 @@ const defineModels = () => {
 };
 
 const connectDB = async () => {
-  let retries = 5;
-  
-  while (retries > 0) {
-    try {
-      await sequelize.authenticate();
-      logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
+  try {
+    await sequelize.authenticate();
+    logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
-      // Sync models in development
-      if (process.env.NODE_ENV === 'development') {
-        await sequelize.sync({ alter: true });
-        logger.info('Database models synchronized');
-      }
-      
-      return;
-    } catch (error) {
-      retries--;
-      if (retries === 0) {
-        logger.error('Database connection failed after all retries:', error);
-        process.exit(1);
-      }
-      logger.warn(`Database connection attempt failed. Retrying... (${retries} attempts remaining)`);
-      await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retrying
+    // Sync models in development
+    if (process.env.NODE_ENV === 'development') {
+      await sequelize.sync({ alter: true });
+      logger.info('Database models synchronized');
     }
+  } catch (error) {
+    logger.error('Database connection failed:', error);
+    process.exit(1);
   }
 };
 
 module.exports = {
   sequelize,
   connectDB,
-  models: defineModels()
+  models: defineModels(),
 };
