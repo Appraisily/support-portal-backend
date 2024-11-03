@@ -23,9 +23,11 @@ const createSequelizeInstance = () => {
       },
       logging: (msg) => logger.debug(msg)
     };
+
+    logger.info('Initializing production PostgreSQL connection');
     return new Sequelize(config);
   } else {
-    // Use SQLite for development
+    logger.info('Initializing development SQLite connection');
     return new Sequelize({
       dialect: 'sqlite',
       storage: './dev.sqlite',
@@ -62,7 +64,7 @@ const defineModels = () => {
 const connectDB = async () => {
   try {
     await sequelize.authenticate();
-    logger.info('Database connected successfully');
+    logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
     // Sync models in development
     if (process.env.NODE_ENV === 'development') {
