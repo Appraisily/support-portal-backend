@@ -1,3 +1,4 @@
+// src/models/purchase.js
 module.exports = (sequelize, DataTypes) => {
   const Purchase = sequelize.define('Purchase', {
     id: {
@@ -24,42 +25,16 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: true
   });
 
-  const PurchaseItem = sequelize.define('PurchaseItem', {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true
-    },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    quantity: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      validate: {
-        min: 1
-      }
-    },
-    price: {
-      type: DataTypes.DECIMAL(10, 2),
-      allowNull: false,
-      validate: {
-        min: 0
-      }
-    }
-  });
-
   Purchase.associate = (models) => {
     Purchase.belongsTo(models.Customer, {
       foreignKey: 'customerId',
       as: 'customer'
     });
-    Purchase.hasMany(PurchaseItem, {
+    Purchase.hasMany(models.PurchaseItem, {
       foreignKey: 'purchaseId',
       as: 'items'
     });
   };
 
-  return { Purchase, PurchaseItem };
+  return Purchase;
 };
