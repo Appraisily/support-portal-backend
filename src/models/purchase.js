@@ -1,4 +1,3 @@
-// src/models/purchase.js
 module.exports = (sequelize, DataTypes) => {
   const Purchase = sequelize.define('Purchase', {
     id: {
@@ -29,10 +28,6 @@ module.exports = (sequelize, DataTypes) => {
     Purchase.belongsTo(models.Customer, {
       foreignKey: 'customerId',
       as: 'customer'
-    });
-    Purchase.hasMany(models.PurchaseItem, {
-      foreignKey: 'purchaseId',
-      as: 'items'
     });
   };
 
