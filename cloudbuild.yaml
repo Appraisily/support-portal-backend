@@ -34,13 +34,13 @@ steps:
       - '--add-cloudsql-instances'
       - 'civil-forge-403609:us-central1:support-portal-db'
       - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080'
+      - 'NODE_ENV=production,PORT=8080,STORAGE_BUCKET=support-portal-attachments-civil-forge-403609'
       - '--set-cloudsql-instances'
       - 'civil-forge-403609:us-central1:support-portal-db'
       - '--vpc-connector'
       - 'projects/$PROJECT_ID/locations/us-central1/connectors/cloud-sql-connector'
       - '--set-secrets'
-      - 'DB_HOST=DB_HOST:latest,DB_PORT=DB_PORT:latest,DB_NAME=DB_NAME:latest,DB_USER=DB_USER:latest,DB_PASSWORD=DB_PASSWORD:latest,CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,STORAGE_BUCKET=STORAGE_BUCKET:latest'
+      - 'DB_HOST=DB_HOST:latest,DB_PORT=DB_PORT:latest,DB_NAME=DB_NAME:latest,DB_USER=DB_USER:latest,DB_PASSWORD=DB_PASSWORD:latest,CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest'
 
 images:
   - 'gcr.io/$PROJECT_ID/support-portal-backend'
