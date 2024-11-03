@@ -11,21 +11,20 @@ const createSequelizeInstance = () => {
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
-      host: '/cloudsql',
+      host: process.env.DB_HOST || '/cloudsql',
       dialectOptions: {
-        socketPath: `/cloudsql/${socketPath}`,
+        // Use Unix domain socket for Cloud SQL
+        socketPath: `/cloudsql/${socketPath}/.s.PGSQL.5432`,
         connectTimeout: 60000,
         statement_timeout: 60000,
         idle_in_transaction_session_timeout: 60000,
-        keepAlive: true,
-        ssl: false
+        keepAlive: true
       },
       pool: {
         max: 5,
         min: 0,
         acquire: 60000,
-        idle: 10000,
-        evict: 60000
+        idle: 10000
       },
       logging: (msg) => logger.debug(msg),
       retry: {
