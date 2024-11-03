@@ -16,7 +16,8 @@ const createSequelizeInstance = () => {
         connectTimeout: 60000,
         statement_timeout: 60000,
         idle_in_transaction_session_timeout: 60000,
-        keepAlive: true
+        keepAlive: true,
+        ssl: false
       },
       pool: {
         max: 5,
@@ -51,7 +52,6 @@ const createSequelizeInstance = () => {
 
 const sequelize = createSequelizeInstance();
 
-// Initialize models
 const defineModels = () => {
   const models = {
     User: require('../models/user')(sequelize, DataTypes),
@@ -64,7 +64,6 @@ const defineModels = () => {
     PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
   };
 
-  // Define associations
   Object.values(models).forEach(model => {
     if (model.associate) {
       model.associate(models);
@@ -76,14 +75,13 @@ const defineModels = () => {
 
 const connectDB = async () => {
   let retries = 5;
-  const retryDelay = 5000; // 5 seconds
+  const retryDelay = 5000;
 
   while (retries > 0) {
     try {
       await sequelize.authenticate();
       logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
-      // Sync models in development
       if (process.env.NODE_ENV === 'development') {
         await sequelize.sync({ alter: true });
         logger.info('Database models synchronized');
