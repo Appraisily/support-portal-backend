@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { authenticate } = require('../middleware/auth');
 const ticketRoutes = require('./ticketRoutes');
 const messageRoutes = require('./messageRoutes');
 const attachmentRoutes = require('./attachmentRoutes');
