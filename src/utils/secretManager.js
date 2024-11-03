@@ -9,49 +9,46 @@ class SecretManager {
   }
 
   async getSecret(secretName) {
-    // Convert secret names to match Secret Manager format
-    const formattedName = secretName.toLowerCase().replace(/_/g, '-');
-    
-    if (this.secrets.has(formattedName)) {
-      return this.secrets.get(formattedName);
+    if (this.secrets.has(secretName)) {
+      return this.secrets.get(secretName);
     }
 
     try {
-      const name = `projects/${this.projectId}/secrets/${formattedName}/versions/latest`;
+      const name = `projects/${this.projectId}/secrets/${secretName}/versions/latest`;
       const [version] = await this.client.accessSecretVersion({ name });
       const secret = version.payload.data.toString();
-      this.secrets.set(formattedName, secret);
+      this.secrets.set(secretName, secret);
       return secret;
     } catch (error) {
-      logger.error(`Error accessing secret ${formattedName}:`, error);
+      logger.error(`Error accessing secret ${secretName}:`, error);
       throw error;
     }
   }
 
   async loadSecrets() {
     const requiredSecrets = [
-      'jwt-secret',
-      'db-host',
-      'db-port',
-      'db-name',
-      'db-user',
-      'db-password',
-      'cloud-sql-connection-name',
-      'gmail-client-id',
-      'gmail-client-secret',
-      'gmail-refresh-token',
-      'storage-bucket',
-      'sendgrid-api-key',
-      'sendgrid-email',
-      'stripe-secret-key-live',
-      'stripe-webhook-secret-live'
+      'DB_HOST',
+      'DB_PORT',
+      'DB_NAME',
+      'DB_USER',
+      'DB_PASSWORD',
+      'CLOUD_SQL_CONNECTION_NAME',
+      'GMAIL_CLIENT_ID',
+      'GMAIL_CLIENT_SECRET',
+      'GMAIL_REFRESH_TOKEN',
+      'STORAGE_BUCKET',
+      'SENDGRID_API_KEY',
+      'SENDGRID_EMAIL',
+      'STRIPE_SECRET_KEY_LIVE',
+      'STRIPE_WEBHOOK_SECRET_LIVE',
+      'jwt-secret'  // This one stays hyphenated as it's already created this way
     ];
 
     try {
       for (const secretName of requiredSecrets) {
         const value = await this.getSecret(secretName);
-        // Convert back to environment variable format
-        const envName = secretName.toUpperCase().replace(/-/g, '_');
+        // For jwt-secret, convert to JWT_SECRET in env
+        const envName = secretName === 'jwt-secret' ? 'JWT_SECRET' : secretName;
         process.env[envName] = value;
         logger.info(`Loaded secret: ${secretName}`);
       }
