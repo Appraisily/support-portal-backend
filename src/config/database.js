@@ -4,16 +4,14 @@ const logger = require('../utils/logger');
 const createSequelizeInstance = () => {
   const config = {
     dialect: 'postgres',
-    host: process.env.NODE_ENV === 'production' 
-      ? process.env.DB_HOST 
-      : 'localhost',
     port: process.env.DB_PORT || 5432,
     database: process.env.DB_NAME || 'support_portal',
     username: process.env.DB_USER || 'support_portal_user',
     password: process.env.DB_PASSWORD,
     dialectOptions: {
+      // For Cloud SQL
       socketPath: process.env.NODE_ENV === 'production'
-        ? `/cloudsql/civil-forge-403609:us-central1:support-portal-db`
+        ? `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`
         : undefined,
       ssl: process.env.NODE_ENV === 'production' ? {
         rejectUnauthorized: false
@@ -28,6 +26,11 @@ const createSequelizeInstance = () => {
     logging: (msg) => logger.debug(msg)
   };
 
+  // Only set host if not using socket
+  if (!config.dialectOptions.socketPath) {
+    config.host = process.env.DB_HOST || 'localhost';
+  }
+
   return new Sequelize(config);
 };
 
@@ -41,7 +44,6 @@ const defineModels = () => {
     Message: require('../models/message')(sequelize, DataTypes),
     Customer: require('../models/customer')(sequelize, DataTypes),
     Purchase: require('../models/purchase')(sequelize, DataTypes),
-    PurchaseItem: require('../models/purchaseItem')(sequelize, DataTypes),
     Attachment: require('../models/attachment')(sequelize, DataTypes),
     PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
   };
