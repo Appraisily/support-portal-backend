@@ -11,30 +11,28 @@ exports.listTickets = async (req, res, next) => {
       limit
     });
 
-    const response = {
-      tickets: result.tickets.map(ticket => ({
-        id: ticket.id,
-        subject: ticket.subject,
-        customer: ticket.customer ? {
-          id: ticket.customer.id,
-          name: ticket.customer.name,
-          email: ticket.customer.email
-        } : null,
-        status: ticket.status,
-        priority: ticket.priority,
-        createdAt: ticket.createdAt.toISOString(),
-        lastUpdated: ticket.updatedAt.toISOString(),
-        category: ticket.category,
-        messages: ticket.messages || []
-      })),
-      pagination: {
-        total: result.total,
-        page: result.page,
-        totalPages: result.totalPages
-      }
-    };
+    const tickets = result.tickets.map(ticket => ({
+      id: ticket.id,
+      subject: ticket.subject,
+      status: ticket.status,
+      priority: ticket.priority,
+      category: ticket.category,
+      customer: ticket.customer ? {
+        id: ticket.customer.id,
+        name: ticket.customer.name,
+        email: ticket.customer.email
+      } : null,
+      createdAt: ticket.createdAt.toISOString(),
+      lastUpdated: ticket.updatedAt.toISOString(),
+      messages: (ticket.messages || []).map(message => ({
+        id: message.id,
+        content: message.content,
+        createdAt: message.createdAt.toISOString(),
+        author: message.author
+      }))
+    }));
 
-    res.json(response);
+    res.json(tickets);
   } catch (error) {
     logger.error('Error in listTickets:', error);
     next(error);

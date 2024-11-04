@@ -9,9 +9,9 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: false
     },
-    internal: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
+    author: {
+      type: DataTypes.STRING,
+      allowNull: false
     }
   }, {
     timestamps: true
@@ -21,14 +21,6 @@ module.exports = (sequelize, DataTypes) => {
     Message.belongsTo(models.Ticket, {
       foreignKey: 'ticketId',
       as: 'ticket'
-    });
-    Message.belongsTo(models.User, {
-      foreignKey: 'authorId',
-      as: 'author'
-    });
-    Message.hasMany(models.Attachment, {
-      foreignKey: 'messageId',
-      as: 'attachments'
     });
   };
 
