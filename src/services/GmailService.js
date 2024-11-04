@@ -103,6 +103,50 @@ class GmailService {
 
     return { subject, from, content };
   }
+
+  async testConnection() {
+    try {
+      if (this.mockMode) {
+        return {
+          status: 'mock',
+          message: 'Running in mock mode'
+        };
+      }
+
+      // Intentar listar los últimos 5 emails no leídos
+      const response = await this.gmail.users.messages.list({
+        userId: 'me',
+        maxResults: 5,
+        q: 'is:unread'
+      });
+
+      const emails = response.data.messages || [];
+      const emailDetails = [];
+
+      for (const email of emails) {
+        const details = await this.gmail.users.messages.get({
+          userId: 'me',
+          id: email.id
+        });
+
+        const headers = details.data.payload.headers;
+        emailDetails.push({
+          id: email.id,
+          subject: headers.find(h => h.name === 'Subject')?.value,
+          from: headers.find(h => h.name === 'From')?.value
+        });
+      }
+
+      return {
+        status: 'connected',
+        emailCount: emails.length,
+        recentEmails: emailDetails
+      };
+    } catch (error) {
+      logger.error('Gmail test connection failed:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = new GmailService();

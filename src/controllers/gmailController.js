@@ -39,3 +39,21 @@ exports.syncThread = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.testConnection = async (req, res, next) => {
+  try {
+    logger.info('Testing Gmail connection...');
+    
+    // Obtener los últimos 5 emails sin leer
+    const result = await GmailService.testConnection();
+    
+    res.json({
+      success: true,
+      connectionStatus: 'OK',
+      testResult: result
+    });
+  } catch (error) {
+    logger.error('Gmail connection test failed:', error);
+    next(error);
+  }
+};

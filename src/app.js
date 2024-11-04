@@ -1,35 +1,18 @@
-const express = require('express');
-const cors = require('cors');
-const rateLimit = require('express-rate-limit');
-const logger = require('./utils/logger');
-
-const app = express();
-
-// Configurar trust proxy para Cloud Run
-app.set('trust proxy', true);
-
-// Configurar rate limiter
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // límite de 100 peticiones por ventana
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: (req, res) => {
-    logger.warn('Rate limit exceeded:', {
-      ip: req.ip,
-      path: req.path
-    });
-    res.status(429).json({
-      error: 'Too many requests, please try again later.'
-    });
+class GmailService {
+  constructor() {
+    this.oauth2Client = new google.auth.OAuth2(
+      process.env.GMAIL_CLIENT_ID,
+      process.env.GMAIL_CLIENT_SECRET,
+      'https://developers.google.com/oauthplayground'
+    );
+    // ...
   }
-});
 
-// Aplicar el rate limiter a todas las rutas
-app.use(limiter);
+  async handleWebhook(messageData) {
+    // Procesa nuevos emails cuando Gmail envía una notificación
+  }
 
-// Resto de la configuración...
-app.use(cors());
-app.use(express.json());
-
-// ... resto del código ... 
+  async processEmailThread(threadId, messageData) {
+    // Procesa el hilo completo del email
+  }
+} 
