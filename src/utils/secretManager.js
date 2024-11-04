@@ -4,6 +4,7 @@ const logger = require('./logger');
 class SecretManager {
   constructor() {
     this.client = new SecretManagerServiceClient();
+    // Use GOOGLE_CLOUD_PROJECT_ID instead of GOOGLE_CLOUD_PROJECT
     this.projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
     this.secrets = new Map();
   }
