@@ -13,12 +13,23 @@ const createSequelizeInstance = () => {
     const config = {
       dialect: 'postgres',
       dialectModule: require('pg'),
-      host: `/cloudsql/${connectionName}`,
       database: dbName,
       username: dbUser,
       password: dbPassword,
       dialectOptions: {
-        socketPath: `/cloudsql/${connectionName}`
+        // Unix Domain Socket
+        host: `/cloudsql/${connectionName}`,
+        // Required for Cloud SQL
+        ssl: false,
+        // Additional connection parameters
+        keepAlive: true,
+        connectTimeout: 30000,
+        // Retry settings
+        retry: {
+          max: 5,
+          backoffBase: 1000,
+          backoffExponent: 1.5
+        }
       },
       define: {
         timestamps: true
@@ -27,7 +38,8 @@ const createSequelizeInstance = () => {
         max: 5,
         min: 0,
         acquire: 30000,
-        idle: 10000
+        idle: 10000,
+        handleDisconnects: true
       },
       logging: (msg) => logger.debug(msg)
     };
@@ -85,11 +97,20 @@ const connectDB = async () => {
       return;
     } catch (error) {
       retries--;
+      logger.error('Database connection error:', {
+        error: error.message,
+        code: error.original?.code,
+        errno: error.original?.errno,
+        syscall: error.original?.syscall,
+        address: error.original?.address
+      });
+
       if (retries === 0) {
         logger.error('Database connection failed after all retries:', error);
         process.exit(1);
       }
-      logger.warn(`Database connection attempt failed. Retrying... (${retries} attempts remaining)`);
+      
+      logger.warn(`Database connection attempt failed. Retrying in ${retryDelay}ms... (${retries} attempts remaining)`);
       await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
   }
