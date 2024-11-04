@@ -8,15 +8,14 @@ const createSequelizeInstance = () => {
 
     const config = {
       dialect: 'postgres',
-      host: socketPath,
+      dialectModule: require('pg'),
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
       dialectOptions: {
-        socketPath: socketPath,
-        ssl: false,
-        native: true
+        socketPath: socketPath
       },
+      host: null,
       define: {
         timestamps: true
       },
@@ -24,14 +23,9 @@ const createSequelizeInstance = () => {
         max: 5,
         min: 0,
         acquire: 60000,
-        idle: 10000,
-        handleDisconnects: true
+        idle: 10000
       },
-      logging: (msg) => logger.debug(msg),
-      retry: {
-        max: 5,
-        timeout: 60000
-      }
+      logging: (msg) => logger.debug(msg)
     };
 
     logger.info('Initializing production PostgreSQL connection with config:', {
