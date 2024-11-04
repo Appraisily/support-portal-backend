@@ -3,44 +3,44 @@ const logger = require('../utils/logger');
 
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
-    const socketPath = process.env.CLOUD_SQL_CONNECTION_NAME;
-    const database = process.env.DB_NAME || 'support_portal';
-    const username = process.env.DB_USER || 'support_portal_user';
-    const password = process.env.DB_PASSWORD;
+    const socketPath = `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`;
+    logger.info(`Attempting to connect to Cloud SQL using socket path: ${socketPath}`);
 
     const config = {
-      dialect: 'postgres', // Ensure dialect is 'postgres'
-      host: `/cloudsql/${socketPath}`,
-      database: database,
-      username: username,
-      password: password,
-      port: 5432, // Default PostgreSQL port
+      dialect: 'postgres',
+      database: process.env.DB_NAME || 'support_portal',
+      username: process.env.DB_USER || 'support_portal_user',
+      password: process.env.DB_PASSWORD,
+      dialectOptions: {
+        socketPath: socketPath
+      },
       pool: {
         max: 5,
         min: 0,
         acquire: 60000,
         idle: 10000,
+        handleDisconnects: true
       },
-      logging: (msg) => logger.debug(`Sequelize: ${msg}`),
+      logging: (msg) => logger.debug(msg),
       retry: {
         max: 5,
-      },
+        timeout: 60000
+      }
     };
 
     logger.info('Initializing production PostgreSQL connection with config:', {
       database: config.database,
-      username: config.username,
-      host: config.host,
-      port: config.port,
+      socketPath: socketPath,
+      username: config.username
     });
 
     return new Sequelize(config);
   } else {
-    logger.info('Initializing development SQLite connection');
+    logger.info('Running in development mode - using mock storage');
     return new Sequelize({
       dialect: 'sqlite',
       storage: ':memory:',
-      logging: (msg) => logger.debug(msg),
+      logging: (msg) => logger.debug(msg)
     });
   }
 };
@@ -56,7 +56,7 @@ const defineModels = () => {
     Purchase: require('../models/purchase')(sequelize, DataTypes),
     PurchaseItem: require('../models/purchaseItem')(sequelize, DataTypes),
     Attachment: require('../models/attachment')(sequelize, DataTypes),
-    PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes),
+    PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
   };
 
   Object.values(models).forEach(model => {
@@ -70,7 +70,7 @@ const defineModels = () => {
 
 const connectDB = async () => {
   let retries = 5;
-  const retryDelay = 5000; // 5 seconds
+  const retryDelay = 5000;
 
   while (retries > 0) {
     try {
@@ -97,5 +97,5 @@ const connectDB = async () => {
 module.exports = {
   sequelize,
   connectDB,
-  models: defineModels(),
+  models: defineModels()
 };
