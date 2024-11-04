@@ -3,6 +3,12 @@ const logger = require('../utils/logger');
 const fs = require('fs');
 
 const createSequelizeInstance = () => {
+  logger.info('Environment check:', {
+    nodeEnv: process.env.NODE_ENV,
+    connectionName: process.env.CLOUD_SQL_CONNECTION_NAME,
+    socketPath: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`
+  });
+
   if (process.env.NODE_ENV === 'production') {
     const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
     const dbName = process.env.DB_NAME;
@@ -10,46 +16,45 @@ const createSequelizeInstance = () => {
     const dbPassword = process.env.DB_PASSWORD;
 
     if (!connectionName || !dbName || !dbUser || !dbPassword) {
-      logger.error('Missing database configuration:', {
+      const config = {
         connectionName: !!connectionName,
         dbName: !!dbName,
         dbUser: !!dbUser,
         dbPassword: !!dbPassword
-      });
+      };
+      logger.error('Missing database configuration:', config);
       throw new Error('Missing required database configuration environment variables');
     }
 
     const socketPath = `/cloudsql/${connectionName}`;
-    
-    logger.info('Production database configuration:', {
-      connectionName,
-      dbName,
-      dbUser,
-      socketPath
-    });
 
-    // Verify socket directory and permissions
+    // Check if socket path exists and has correct permissions
     try {
-      if (!fs.existsSync('/cloudsql')) {
-        logger.info('Creating /cloudsql directory');
-        fs.mkdirSync('/cloudsql', { recursive: true, mode: 0o777 });
+      const exists = fs.existsSync(socketPath);
+      logger.info(`Socket path check: ${socketPath} exists: ${exists}`);
+      
+      if (exists) {
+        const stats = fs.statSync(socketPath);
+        logger.info('Socket file stats:', {
+          uid: stats.uid,
+          gid: stats.gid,
+          mode: stats.mode
+        });
       }
-
-      const stats = fs.statSync('/cloudsql');
-      logger.info('Socket directory stats:', {
-        mode: stats.mode,
-        uid: stats.uid,
-        gid: stats.gid
-      });
-
-      const contents = fs.readdirSync('/cloudsql');
-      logger.info('Socket directory contents:', contents);
     } catch (error) {
-      logger.error('Socket directory error:', error);
+      logger.error('Socket file check failed:', {
+        error: error.message,
+        code: error.code,
+        path: error.path
+      });
     }
 
     const config = {
       dialect: 'postgres',
+      dialectOptions: {
+        socketPath,
+        ssl: true,
+      },
       host: socketPath,
       database: dbName,
       username: dbUser,
@@ -57,28 +62,30 @@ const createSequelizeInstance = () => {
       pool: {
         max: 5,
         min: 0,
-        acquire: 30000,
-        idle: 10000
+        acquire: 60000,
+        idle: 10000,
+        handleDisconnects: true
       },
-      dialectOptions: {
-        socketPath: socketPath,
-        ssl: false,
-        native: true,
-        keepAlive: true
+      retry: {
+        match: [/Deadlock/i, /Connection terminated/i],
+        max: 3
       },
       logging: msg => logger.debug(msg)
     };
 
-    logger.info('Creating Sequelize instance with config:', {
+    logger.info('Sequelize configuration:', {
       dialect: config.dialect,
-      host: config.host,
-      database: config.database,
-      username: config.username,
+      socketPath,
+      ssl: config.dialectOptions.ssl,
       poolConfig: config.pool,
-      socketPath: config.dialectOptions.socketPath
+      retryEnabled: true
     });
 
-    return new Sequelize(config);
+    logger.info('Creating Sequelize instance...');
+    const instance = new Sequelize(config);
+    logger.info('Sequelize instance created successfully');
+    return instance;
+
   } else {
     logger.info('Development mode - using SQLite');
     return new Sequelize({
@@ -89,7 +96,7 @@ const createSequelizeInstance = () => {
   }
 };
 
-const defineModels = () => {
+const defineModels = (sequelize) => {
   logger.info('Initializing database models...');
   const models = {
     User: require('../models/user')(sequelize, DataTypes),
@@ -113,7 +120,7 @@ const defineModels = () => {
   return models;
 };
 
-const connectDB = async () => {
+const connectDB = async (sequelize) => {
   let retries = 5;
   const retryDelay = 5000;
 
@@ -124,8 +131,9 @@ const connectDB = async () => {
       logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
       if (process.env.NODE_ENV === 'development') {
+        logger.info('Synchronizing database models in development mode...');
         await sequelize.sync({ alter: true });
-        logger.info('Database models synchronized');
+        logger.info('Database models synchronized successfully');
       }
       return;
     } catch (error) {
@@ -135,11 +143,12 @@ const connectDB = async () => {
         code: error.original?.code,
         errno: error.original?.errno,
         syscall: error.original?.syscall,
-        address: error.original?.address
+        address: error.original?.address,
+        stack: error.stack
       });
 
       if (retries === 0) {
-        logger.error('Database connection failed after all retries');
+        logger.error('Database connection failed after all retries. Exiting process.');
         process.exit(1);
       }
 
@@ -153,13 +162,14 @@ let sequelize;
 try {
   logger.info('Initializing database connection...');
   sequelize = createSequelizeInstance();
+  const models = defineModels(sequelize);
+
+  module.exports = {
+    sequelize,
+    connectDB: () => connectDB(sequelize),
+    models
+  };
 } catch (error) {
   logger.error('Failed to initialize database:', error);
   process.exit(1);
 }
-
-module.exports = {
-  sequelize,
-  connectDB,
-  models: defineModels()
-};
