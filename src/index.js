@@ -14,12 +14,21 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Rate limiting
+// Ajustar el Rate limiting para ser más permisivo
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 1000,                // aumentar de 100 a 1000 requests
+  message: {
+    error: 'Too many requests from this IP, please try again later'
+  },
+  standardHeaders: true,    // Incluir headers estándar de rate limit
+  legacyHeaders: false,     // Deshabilitar headers legacy
+  // Excluir health checks del rate limiting
+  skip: (req) => req.path === '/_health'
 });
-app.use(limiter);
+
+// Aplicar rate limiting solo a las rutas de autenticación
+app.use('/api/auth', limiter);  // En lugar de app.use(limiter)
 
 // Health check endpoint for Cloud Run
 app.get('/_health', (req, res) => {
