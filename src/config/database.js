@@ -4,36 +4,29 @@ const logger = require('../utils/logger');
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
     const socketPath = process.env.CLOUD_SQL_CONNECTION_NAME;
-    logger.info(`Attempting to connect to Cloud SQL using socket path: ${socketPath}`);
-
     const config = {
       dialect: 'postgres',
-      host: '/cloudsql/' + socketPath,
+      host: `/cloudsql/${socketPath}`,
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
-      dialectOptions: {
-        // For Cloud SQL Unix Domain Socket
-        socketPath: `/cloudsql/${socketPath}`,
-      },
+      // Removed 'dialectOptions' and 'ssl' configuration
       pool: {
         max: 5,
         min: 0,
         acquire: 60000,
         idle: 10000,
-        handleDisconnects: true
       },
       logging: (msg) => logger.debug(msg),
       retry: {
         max: 5,
-        timeout: 60000
-      }
+      },
     };
 
     logger.info('Initializing production PostgreSQL connection with config:', {
       database: config.database,
       username: config.username,
-      host: config.host
+      host: config.host,
     });
 
     return new Sequelize(config);
@@ -42,7 +35,7 @@ const createSequelizeInstance = () => {
     return new Sequelize({
       dialect: 'sqlite',
       storage: ':memory:',
-      logging: (msg) => logger.debug(msg)
+      logging: (msg) => logger.debug(msg),
     });
   }
 };
