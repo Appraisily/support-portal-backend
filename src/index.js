@@ -29,59 +29,79 @@ app.get('/_health', (req, res) => {
 // Load secrets and start server
 async function startServer() {
   try {
-    // Load secrets from Secret Manager in production
+    // 1. Cargar secretos
     if (process.env.NODE_ENV === 'production') {
-      logger.info('Loading secrets from Secret Manager...');
+      logger.info('1. Loading secrets from Secret Manager...');
       await secretManager.loadSecrets();
       logger.info('Secrets loaded successfully');
     }
 
-    // Verify environment variables after secrets are loaded
-    logger.info('Verifying environment variables...');
-    const requiredVars = ['DB_NAME', 'DB_USER', 'DB_PASSWORD'];
-    const missingVars = requiredVars.filter(varName => !process.env[varName]);
-    if (missingVars.length > 0) {
-      throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
-    }
-    logger.info('Environment variables verified successfully');
+    // 2. Verificar variables de entorno
+    logger.info('2. Verifying environment variables...');
+    const requiredVars = ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'CLOUD_SQL_CONNECTION_NAME'];
+    const envVars = {};
+    requiredVars.forEach(varName => {
+      envVars[varName] = !!process.env[varName];
+    });
+    logger.info('Environment variables status:', envVars);
 
-    // Now load database modules after secrets are loaded
+    if (Object.values(envVars).includes(false)) {
+      throw new Error(`Missing required environment variables: ${Object.entries(envVars).filter(([,v]) => !v).map(([k]) => k).join(', ')}`);
+    }
+
+    // 3. Inicializar base de datos
+    logger.info('3. Initializing database...');
     const { connectDB } = require('./config/database');
-    const { testDatabaseConnection } = require('./utils/dbTest');
-    const { seedAdminUser } = require('./utils/seedAdmin');
-
-    // Test database connectivity
-    logger.info('Testing database connectivity...');
-    const connectionSuccess = await testDatabaseConnection();
-    if (!connectionSuccess) {
-      throw new Error('Database connectivity test failed');
+    const dbConnected = await connectDB();
+    
+    if (!dbConnected) {
+      throw new Error('Failed to connect to database');
     }
 
-    // Initialize database connection
-    await connectDB();
-
-    // Seed admin user
-    logger.info('Attempting to seed admin user...');
-    await seedAdminUser();
-    logger.info('Admin user seeding completed');
-
-    // Load routes after database is connected
-    const routes = require('./routes');
-    app.use('/api', routes);
-
-    // Error handling middleware
-    const { errorHandler } = require('./middleware/errorHandler');
-    app.use(errorHandler);
-
-    // Start server
+    // 4. Iniciar servidor HTTP
+    logger.info('4. Starting HTTP server...');
     const PORT = process.env.PORT || 8080;
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${PORT}`);
     });
+
+    // 5. Manejar señales de terminación
+    process.on('SIGTERM', () => {
+      logger.info('SIGTERM received. Shutting down gracefully...');
+      server.close(() => {
+        logger.info('HTTP server closed');
+        process.exit(0);
+      });
+    });
+
+    return server;
+
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error('Server startup failed:', {
+      error: error.message,
+      stack: error.stack,
+      phase: error.phase || 'unknown'
+    });
+    
+    // Esperar un momento antes de salir para asegurar que los logs se envíen
+    await new Promise(resolve => setTimeout(resolve, 1000));
     process.exit(1);
   }
 }
 
-startServer();
+// Iniciar el servidor y manejar errores no capturados
+startServer().catch(error => {
+  logger.error('Unhandled error during server startup:', error);
+  process.exit(1);
+});
+
+// Manejar errores no capturados globalmente
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (error) => {
+  logger.error('Unhandled rejection:', error);
+  process.exit(1);
+});
