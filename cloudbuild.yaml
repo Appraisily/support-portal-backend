@@ -31,12 +31,10 @@ steps:
       - '10'
       - '--port'
       - '8080'
-      - '--add-cloudsql-instances'
-      - 'civil-forge-403609:us-central1:support-portal-db'
-      - '--vpc-connector'
-      - 'cloud-sql-connector'
+      - '--set-cloudsql-instances'
+      - '$PROJECT_ID:us-central1:support-portal-db'
       - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT_ID=civil-forge-403609'
+      - 'NODE_ENV=production,PORT=8080,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID,CLOUD_SQL_CONNECTION_NAME=$PROJECT_ID:us-central1:support-portal-db'
       - '--set-secrets'
       - >-
         DB_HOST=DB_HOST:latest,
@@ -45,11 +43,10 @@ steps:
         DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
         CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,
-        jwt-secret=jwt-secret:latest,
         GMAIL_CLIENT_ID=GMAIL_CLIENT_ID:latest,
         GMAIL_CLIENT_SECRET=GMAIL_CLIENT_SECRET:latest,
         GMAIL_REFRESH_TOKEN=GMAIL_REFRESH_TOKEN:latest,
-        STORAGE_BUCKET=STORAGE_BUCKET:latest
+        jwt-secret=jwt-secret:latest
 
 images:
   - 'gcr.io/$PROJECT_ID/support-portal-backend'
