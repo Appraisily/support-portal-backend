@@ -1,4 +1,4 @@
-const { models } = require('../config/database');
+const { getModels } = require('../config/database');
 const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
 
@@ -17,6 +17,9 @@ class TicketService {
       const query = {};
       if (status) query.status = status;
       if (priority) query.priority = priority;
+
+      logger.info('Getting models...');
+      const models = await getModels();
 
       logger.info('Executing findAndCountAll with query:', { query, page, limit });
 
@@ -61,6 +64,7 @@ class TicketService {
   }
 
   async getTicketById(id) {
+    const models = await getModels();
     const ticket = await models.Ticket.findByPk(id, {
       include: [
         {
@@ -83,6 +87,7 @@ class TicketService {
 
   async createTicket(ticketData) {
     try {
+      const models = await getModels();
       const ticket = await models.Ticket.create(ticketData);
       logger.info(`New ticket created with ID: ${ticket.id}`);
       return ticket;
@@ -93,6 +98,7 @@ class TicketService {
   }
 
   async updateTicket(id, updates) {
+    const models = await getModels();
     const ticket = await models.Ticket.findByPk(id);
 
     if (!ticket) {
@@ -106,6 +112,7 @@ class TicketService {
   }
 
   async addMessage(ticketId, messageData) {
+    const models = await getModels();
     const ticket = await this.getTicketById(ticketId);
     const message = await models.Message.create({
       ...messageData,
