@@ -4,20 +4,19 @@ const logger = require('./logger');
 class SecretManager {
   constructor() {
     this.client = new SecretManagerServiceClient();
-    this.projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+    this.projectId = process.env.GOOGLE_CLOUD_PROJECT;
     this.secrets = new Map();
   }
 
   async getSecret(secretName) {
-    if (this.secrets.has(secretName)) {
-      return this.secrets.get(secretName);
-    }
-
     try {
       const name = `projects/${this.projectId}/secrets/${secretName}/versions/latest`;
+      logger.info(`Accessing secret: ${secretName}`);
+      
       const [version] = await this.client.accessSecretVersion({ name });
-      const secret = version.payload.data.toString();
-      this.secrets.set(secretName, secret);
+      const secret = version.payload.data.toString().trim();
+      
+      logger.info(`Secret ${secretName} retrieved successfully`);
       return secret;
     } catch (error) {
       logger.error(`Error accessing secret ${secretName}:`, error);
@@ -26,22 +25,21 @@ class SecretManager {
   }
 
   async loadSecrets() {
+    if (!this.projectId) {
+      throw new Error('GOOGLE_CLOUD_PROJECT environment variable is not set');
+    }
+
+    logger.info('Loading secrets for project:', this.projectId);
+
     const requiredSecrets = [
-      'DB_HOST',
-      'DB_PORT',
+      'CLOUD_SQL_CONNECTION_NAME',
       'DB_NAME',
       'DB_USER',
       'DB_PASSWORD',
-      'CLOUD_SQL_CONNECTION_NAME',
       'GMAIL_CLIENT_ID',
       'GMAIL_CLIENT_SECRET',
       'GMAIL_REFRESH_TOKEN',
-      'STORAGE_BUCKET',
-      'SENDGRID_API_KEY',
-      'SENDGRID_EMAIL',
-      'STRIPE_SECRET_KEY_LIVE',
-      'STRIPE_WEBHOOK_SECRET_LIVE',
-      'jwt-secret'  // This one stays hyphenated as it's already created this way
+      'jwt-secret'
     ];
 
     try {
@@ -52,6 +50,8 @@ class SecretManager {
         process.env[envName] = value;
         logger.info(`Loaded secret: ${secretName}`);
       }
+
+      logger.info('All required secrets loaded successfully');
     } catch (error) {
       logger.error('Failed to load secrets:', error);
       throw error;
