@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
+const { testDatabaseConnection } = require('./utils/dbTest');
 
 const app = express();
 
@@ -34,6 +35,13 @@ async function startServer() {
       logger.info('Loading secrets from Secret Manager...');
       await secretManager.loadSecrets();
       logger.info('Secrets loaded successfully');
+
+      // Test database connectivity before proceeding
+      logger.info('Testing database connectivity...');
+      const connectionSuccess = await testDatabaseConnection();
+      if (!connectionSuccess) {
+        throw new Error('Database connectivity test failed');
+      }
     }
 
     // Initialize database after secrets are loaded
