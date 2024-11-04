@@ -150,15 +150,44 @@ class GmailService {
 
   async setupGmailWatch() {
     try {
+      if (this.mockMode) {
+        logger.info('Mock mode: skipping Gmail watch setup');
+        return;
+      }
+
+      // Primero, detener cualquier watch existente
+      try {
+        await this.gmail.users.stop({
+          userId: 'me'
+        });
+        logger.info('Stopped existing Gmail watch');
+      } catch (error) {
+        logger.warn('No existing watch to stop');
+      }
+
+      // Configurar nuevo watch
       const response = await this.gmail.users.watch({
         userId: 'me',
         requestBody: {
           labelIds: ['INBOX'],
-          topicName: `projects/${process.env.GOOGLE_CLOUD_PROJECT}/topics/gmail-notifications`
+          topicName: `projects/${process.env.GOOGLE_CLOUD_PROJECT}/topics/gmail-notifications`,
+          labelFilterAction: 'include'
         }
       });
 
       logger.info('Gmail watch setup successfully:', response.data);
+      
+      // Verificar que el watch se configuró correctamente
+      const watchDetails = await this.gmail.users.getProfile({
+        userId: 'me'
+      });
+      
+      if (watchDetails.data.historyId) {
+        logger.info('Gmail watch confirmed active with historyId:', watchDetails.data.historyId);
+      } else {
+        throw new Error('Watch setup failed - no historyId received');
+      }
+
       return response.data;
     } catch (error) {
       logger.error('Failed to setup Gmail watch:', error);

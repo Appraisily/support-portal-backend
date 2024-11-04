@@ -70,3 +70,18 @@ exports.testConnection = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.setupWatch = async (req, res, next) => {
+  try {
+    logger.info('Setting up Gmail watch...');
+    const result = await GmailService.setupGmailWatch();
+    
+    res.json({
+      success: true,
+      watchDetails: result
+    });
+  } catch (error) {
+    logger.error('Failed to setup Gmail watch:', error);
+    next(error);
+  }
+};
