@@ -8,7 +8,15 @@ const createSequelizeInstance = () => {
     const dbUser = process.env.DB_USER || 'support_portal_user';
     const dbPassword = process.env.DB_PASSWORD;
 
-    logger.info(`Initializing Cloud SQL connection for ${connectionName}`);
+    logger.info('Production environment detected, initializing Cloud SQL connection with params:', {
+      connectionName,
+      dbName,
+      dbUser,
+      socketPath: `/cloudsql/${connectionName}`
+    });
+
+    const socketPath = `/cloudsql/${connectionName}`;
+    logger.info(`Checking socket path existence and permissions: ${socketPath}`);
 
     const config = {
       dialect: 'postgres',
@@ -18,7 +26,7 @@ const createSequelizeInstance = () => {
       password: dbPassword,
       dialectOptions: {
         // Unix Domain Socket
-        host: `/cloudsql/${connectionName}`,
+        host: socketPath,
         // Required for Cloud SQL
         ssl: false,
         // Additional connection parameters
@@ -41,16 +49,38 @@ const createSequelizeInstance = () => {
         idle: 10000,
         handleDisconnects: true
       },
-      logging: (msg) => logger.debug(msg)
+      logging: (msg) => logger.debug(`[Sequelize] ${msg}`)
     };
 
-    return new Sequelize(config);
+    logger.info('Sequelize configuration:', {
+      dialect: config.dialect,
+      database: config.database,
+      username: config.username,
+      host: config.dialectOptions.host,
+      ssl: config.dialectOptions.ssl,
+      poolConfig: config.pool
+    });
+
+    try {
+      logger.info('Creating Sequelize instance...');
+      const sequelize = new Sequelize(config);
+      logger.info('Sequelize instance created successfully');
+      return sequelize;
+    } catch (error) {
+      logger.error('Error creating Sequelize instance:', {
+        error: error.message,
+        stack: error.stack,
+        code: error.original?.code,
+        errno: error.original?.errno
+      });
+      throw error;
+    }
   } else {
     logger.info('Running in development mode - using SQLite');
     return new Sequelize({
       dialect: 'sqlite',
       storage: ':memory:',
-      logging: (msg) => logger.debug(msg),
+      logging: (msg) => logger.debug(`[Sequelize] ${msg}`),
       define: {
         timestamps: true
       }
@@ -58,9 +88,8 @@ const createSequelizeInstance = () => {
   }
 };
 
-const sequelize = createSequelizeInstance();
-
 const defineModels = () => {
+  logger.info('Initializing database models...');
   const models = {
     User: require('../models/user')(sequelize, DataTypes),
     Ticket: require('../models/ticket')(sequelize, DataTypes),
@@ -72,12 +101,14 @@ const defineModels = () => {
     PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
   };
 
+  logger.info('Setting up model associations...');
   Object.values(models).forEach(model => {
     if (model.associate) {
       model.associate(models);
     }
   });
 
+  logger.info('Models initialized successfully');
   return models;
 };
 
@@ -87,12 +118,14 @@ const connectDB = async () => {
 
   while (retries > 0) {
     try {
+      logger.info('Attempting database connection...');
       await sequelize.authenticate();
       logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
       if (process.env.NODE_ENV === 'development') {
+        logger.info('Synchronizing database models in development mode...');
         await sequelize.sync({ alter: true });
-        logger.info('Database models synchronized');
+        logger.info('Database models synchronized successfully');
       }
       return;
     } catch (error) {
@@ -102,11 +135,15 @@ const connectDB = async () => {
         code: error.original?.code,
         errno: error.original?.errno,
         syscall: error.original?.syscall,
-        address: error.original?.address
+        address: error.original?.address,
+        host: error.original?.host,
+        port: error.original?.port,
+        database: error.original?.database,
+        stack: error.stack
       });
 
       if (retries === 0) {
-        logger.error('Database connection failed after all retries:', error);
+        logger.error('Database connection failed after all retries. Exiting process.');
         process.exit(1);
       }
       
@@ -115,6 +152,15 @@ const connectDB = async () => {
     }
   }
 };
+
+let sequelize;
+try {
+  logger.info('Initializing database connection...');
+  sequelize = createSequelizeInstance();
+} catch (error) {
+  logger.error('Failed to initialize database:', error);
+  process.exit(1);
+}
 
 module.exports = {
   sequelize,
