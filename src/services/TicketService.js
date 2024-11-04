@@ -1,37 +1,66 @@
-const Ticket = require('../models/ticket');
+const { models } = require('../config/database');
 const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
 
 class TicketService {
-  async listTickets(filters, pagination) {
-    const { status, priority, page = 1, limit = 10, sort = 'createdAt', order = 'desc' } = pagination;
-    
-    const query = {};
-    if (status) query.status = status;
-    if (priority) query.priority = priority;
+  async listTickets(filters = {}, pagination = {}) {
+    try {
+      const { 
+        status, 
+        priority, 
+        page = 1, 
+        limit = 10, 
+        sort = 'createdAt', 
+        order = 'DESC' 
+      } = { ...filters, ...pagination };
 
-    const sortOptions = { [sort]: order === 'desc' ? -1 : 1 };
-    
-    const tickets = await Ticket.find(query)
-      .sort(sortOptions)
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
-      .populate('assignedTo', 'name email');
+      const query = {};
+      if (status) query.status = status;
+      if (priority) query.priority = priority;
 
-    const total = await Ticket.countDocuments(query);
+      const tickets = await models.Ticket.findAndCountAll({
+        where: query,
+        include: [
+          {
+            model: models.Customer,
+            as: 'customer',
+            attributes: ['id', 'name', 'email']
+          },
+          {
+            model: models.Message,
+            as: 'messages'
+          }
+        ],
+        order: [[sort, order]],
+        limit: parseInt(limit),
+        offset: (page - 1) * limit
+      });
 
-    return {
-      tickets,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit)
-    };
+      return {
+        tickets: tickets.rows,
+        total: tickets.count,
+        page: parseInt(page),
+        totalPages: Math.ceil(tickets.count / limit)
+      };
+    } catch (error) {
+      logger.error('Error listing tickets:', error);
+      throw error;
+    }
   }
 
   async getTicketById(id) {
-    const ticket = await Ticket.findById(id)
-      .populate('messages')
-      .populate('attachments');
+    const ticket = await models.Ticket.findByPk(id, {
+      include: [
+        {
+          model: models.Message,
+          as: 'messages'
+        },
+        {
+          model: models.Attachment,
+          as: 'attachments'
+        }
+      ]
+    });
 
     if (!ticket) {
       throw new ApiError(404, 'Ticket not found');
@@ -41,25 +70,37 @@ class TicketService {
   }
 
   async createTicket(ticketData) {
-    const ticket = new Ticket(ticketData);
-    await ticket.save();
-    logger.info(`New ticket created with ID: ${ticket._id}`);
-    return ticket;
+    try {
+      const ticket = await models.Ticket.create(ticketData);
+      logger.info(`New ticket created with ID: ${ticket.id}`);
+      return ticket;
+    } catch (error) {
+      logger.error('Error creating ticket:', error);
+      throw error;
+    }
   }
 
   async updateTicket(id, updates) {
-    const ticket = await Ticket.findByIdAndUpdate(
-      id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
+    const ticket = await models.Ticket.findByPk(id);
 
     if (!ticket) {
       throw new ApiError(404, 'Ticket not found');
     }
 
+    await ticket.update(updates);
     logger.info(`Ticket ${id} updated`);
+    
     return ticket;
+  }
+
+  async addMessage(ticketId, messageData) {
+    const ticket = await this.getTicketById(ticketId);
+    const message = await models.Message.create({
+      ...messageData,
+      ticketId: ticket.id
+    });
+    
+    return message;
   }
 }
 
