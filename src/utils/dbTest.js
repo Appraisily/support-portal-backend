@@ -55,7 +55,8 @@ async function testDatabaseConnection() {
     host: socketPath,
     database: DB_NAME,
     user: DB_USER,
-    password: DB_PASSWORD
+    password: DB_PASSWORD,
+    ssl: false
   });
 
   try {
