@@ -2,7 +2,7 @@ const { body, param } = require('express-validator');
 
 exports.validateCustomerId = [
   param('customerId')
-    .isMongoId()
+    .isUUID()
     .withMessage('Invalid customer ID format')
 ];
 
