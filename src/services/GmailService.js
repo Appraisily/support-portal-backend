@@ -113,7 +113,7 @@ class GmailService {
         };
       }
 
-      // Intentar listar los últimos 5 emails no leídos.
+      // Intentar listar los últimos 5 emails no leídos..
       const response = await this.gmail.users.messages.list({
         userId: 'me',
         maxResults: 5,
