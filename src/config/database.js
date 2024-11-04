@@ -62,14 +62,19 @@ const createSequelizeInstance = () => {
       database: DB_NAME,
       username: DB_USER,
       password: DB_PASSWORD,
-      host: socketPath,
       dialectOptions: {
+        // Use Unix domain socket for Cloud SQL
         socketPath: socketPath,
-        keepAlive: true,
         // PostgreSQL specific options
         client_encoding: 'UTF8',
         application_name: 'support-portal-backend',
-        statement_timeout: 30000
+        statement_timeout: 30000,
+        // Disable SSL since it's not required
+        ssl: false,
+        // Keep connection alive
+        keepAlive: true,
+        // Use native pg driver
+        native: true
       },
       pool: {
         max: 5,
@@ -94,12 +99,11 @@ const createSequelizeInstance = () => {
       dialect: config.dialect,
       database: config.database,
       username: config.username,
-      host: config.host,
-      poolConfig: config.pool,
       dialectOptions: {
         ...config.dialectOptions,
         password: undefined // Don't log password
-      }
+      },
+      poolConfig: config.pool
     });
 
     logger.info('Creating Sequelize instance...');
