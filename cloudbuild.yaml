@@ -1,13 +1,13 @@
 steps:
-  # Construir la imagen del contenedor
+  # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/support-portal-backend', '.']
   
-  # Empujar la imagen al Container Registry
+  # Push the container image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/support-portal-backend']
   
-  # Desplegar a Cloud Run
+  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -34,9 +34,20 @@ steps:
       - '--add-cloudsql-instances'
       - '$PROJECT_ID:us-central1:support-portal-db'
       - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID'
-      - '--vpc-connector'
-      - 'projects/$PROJECT_ID/locations/us-central1/connectors/cloud-sql-connector'
+      - 'NODE_ENV=production,PORT=8080'
+      - '--set-secrets'
+      - >-
+        CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,
+        DB_HOST=DB_HOST:latest,
+        DB_PORT=DB_PORT:latest,
+        DB_NAME=DB_NAME:latest,
+        DB_USER=DB_USER:latest,
+        DB_PASSWORD=DB_PASSWORD:latest,
+        STORAGE_BUCKET=STORAGE_BUCKET:latest,
+        GMAIL_CLIENT_ID=GMAIL_CLIENT_ID:latest,
+        GMAIL_CLIENT_SECRET=GMAIL_CLIENT_SECRET:latest,
+        GMAIL_REFRESH_TOKEN=GMAIL_REFRESH_TOKEN:latest,
+        JWT_SECRET=jwt-secret:latest
 
 images:
   - 'gcr.io/$PROJECT_ID/support-portal-backend'
