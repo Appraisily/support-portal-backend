@@ -57,19 +57,54 @@ const createSequelizeInstance = () => {
       database: dbName,
       username: dbUser,
       password: dbPassword,
+      host: socketPath,
       dialectOptions: {
-        socketPath,
+        // Use Unix domain socket
+        socketPath: socketPath,
         keepAlive: true,
+        // Retry on connection lost
+        retry: {
+          match: [
+            /Connection terminated/,
+            /Connection reset by peer/,
+            /getaddrinfo ENOTFOUND/,
+            /ECONNREFUSED/,
+            /ETIMEDOUT/,
+            /PROTOCOL_CONNECTION_LOST/
+          ],
+          max: 3
+        },
         // Enable detailed logging
         logging: true,
-        debug: true
+        debug: true,
+        // Increase timeouts
+        connectTimeout: 30000,
+        // Use SSL in production
+        ssl: process.env.NODE_ENV === 'production' ? {
+          rejectUnauthorized: false
+        } : false
       },
       pool: {
         max: 5,
         min: 0,
-        acquire: 30000,
+        acquire: 60000,
         idle: 10000,
-        handleDisconnects: true
+        // Enable connection error handling
+        handleDisconnects: true,
+        // Validate connection before use
+        validate: async (connection) => {
+          try {
+            await connection.query('SELECT 1');
+            return true;
+          } catch (err) {
+            logger.error('Connection validation failed:', err);
+            return false;
+          }
+        }
+      },
+      // Enable retry on failure
+      retry: {
+        max: 3
       },
       logging: (msg) => logger.debug(`[Sequelize] ${msg}`)
     };
@@ -77,10 +112,12 @@ const createSequelizeInstance = () => {
     logger.info('Sequelize configuration:', {
       database: config.database,
       dialect: config.dialect,
+      host: config.host,
       socketPath: config.dialectOptions.socketPath,
       poolConfig: config.pool,
-      ssl: false,
-      username: config.username
+      ssl: !!config.dialectOptions.ssl,
+      username: config.username,
+      retryEnabled: !!config.retry
     });
 
     try {
