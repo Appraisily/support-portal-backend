@@ -1,5 +1,6 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const logger = require('../utils/logger');
+const fs = require('fs');
 
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
@@ -7,12 +8,48 @@ const createSequelizeInstance = () => {
     const dbName = process.env.DB_NAME;
     const dbUser = process.env.DB_USER;
     const dbPassword = process.env.DB_PASSWORD?.trim();
+    const socketPath = `/cloudsql/${connectionName}`;
 
-    logger.info('Production environment detected, initializing Cloud SQL connection with params:', {
+    // Check environment
+    logger.info('Environment check:', {
+      nodeEnv: process.env.NODE_ENV,
       connectionName,
       dbName,
-      dbUser
+      dbUser,
+      socketPath
     });
+
+    // Check if socket path exists
+    try {
+      const socketExists = fs.existsSync(socketPath);
+      logger.info(`Socket path check: ${socketPath} exists: ${socketExists}`);
+      
+      if (socketExists) {
+        const stats = fs.statSync(socketPath);
+        logger.info('Socket file stats:', {
+          mode: stats.mode,
+          uid: stats.uid,
+          gid: stats.gid
+        });
+      }
+    } catch (error) {
+      logger.error('Error checking socket path:', {
+        error: error.message,
+        code: error.code,
+        path: socketPath
+      });
+    }
+
+    // List contents of /cloudsql directory
+    try {
+      const cloudSqlFiles = fs.readdirSync('/cloudsql');
+      logger.info('Contents of /cloudsql directory:', cloudSqlFiles);
+    } catch (error) {
+      logger.error('Error reading /cloudsql directory:', {
+        error: error.message,
+        code: error.code
+      });
+    }
 
     const config = {
       dialect: 'postgres',
@@ -21,14 +58,18 @@ const createSequelizeInstance = () => {
       username: dbUser,
       password: dbPassword,
       dialectOptions: {
-        // Use Unix domain socket for Cloud SQL
-        socketPath: `/cloudsql/${connectionName}`
+        socketPath,
+        keepAlive: true,
+        // Enable detailed logging
+        logging: true,
+        debug: true
       },
       pool: {
         max: 5,
         min: 0,
         acquire: 30000,
-        idle: 10000
+        idle: 10000,
+        handleDisconnects: true
       },
       logging: (msg) => logger.debug(`[Sequelize] ${msg}`)
     };
@@ -52,7 +93,8 @@ const createSequelizeInstance = () => {
         error: error.message,
         stack: error.stack,
         code: error.original?.code,
-        errno: error.original?.errno
+        errno: error.original?.errno,
+        detail: error.original?.detail
       });
       throw error;
     }
@@ -100,6 +142,27 @@ const connectDB = async () => {
   while (retries > 0) {
     try {
       logger.info('Attempting database connection...');
+      
+      // Test socket file before connection
+      if (process.env.NODE_ENV === 'production') {
+        const socketPath = `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`;
+        try {
+          const stats = fs.statSync(socketPath);
+          logger.info('Socket file check before connection:', {
+            exists: true,
+            mode: stats.mode,
+            uid: stats.uid,
+            gid: stats.gid
+          });
+        } catch (error) {
+          logger.error('Socket file check failed:', {
+            error: error.message,
+            code: error.code,
+            path: socketPath
+          });
+        }
+      }
+
       await sequelize.authenticate();
       logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
@@ -118,7 +181,8 @@ const connectDB = async () => {
         syscall: error.original?.syscall,
         address: error.original?.address,
         port: error.original?.port,
-        stack: error.stack
+        stack: error.stack,
+        detail: error.original?.detail
       });
 
       if (retries === 0) {
