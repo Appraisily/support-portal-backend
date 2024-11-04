@@ -39,60 +39,65 @@ if (process.env.NODE_ENV === 'production') {
   );
 }
 
-// Inicializar modelos
-logger.info('Initializing models...');
-const models = {};
+const initializeDatabase = async () => {
+  try {
+    // Probar conexión
+    await sequelize.authenticate();
+    logger.info('Database connection established successfully');
 
-try {
-  // 1. Primero definimos TODOS los modelos
-  models.Customer = defineCustomer(sequelize, DataTypes);
-  logger.info('Customer model defined');
-  
-  models.User = defineUser(sequelize, DataTypes);
-  logger.info('User model defined');
-  
-  models.Ticket = defineTicket(sequelize, DataTypes);
-  logger.info('Ticket model defined');
-  
-  models.Message = defineMessage(sequelize, DataTypes);
-  logger.info('Message model defined');
-  
-  models.Attachment = defineAttachment(sequelize, DataTypes);
-  logger.info('Attachment model defined');
+    // Definir modelos
+    const models = {
+      User: defineUser(sequelize, DataTypes),
+      Customer: defineCustomer(sequelize, DataTypes),
+      Ticket: defineTicket(sequelize, DataTypes),
+      Message: defineMessage(sequelize, DataTypes),
+      Attachment: defineAttachment(sequelize, DataTypes)
+    };
 
-  // 2. DESPUÉS de que todos los modelos estén definidos, configuramos las asociaciones
-  logger.info('Setting up model associations...');
-  
-  Object.keys(models).forEach(modelName => {
-    if (models[modelName].associate) {
-      try {
-        models[modelName].associate(models);
-        logger.info(`Associations configured for ${modelName}`);
-      } catch (error) {
-        logger.error(`Error configuring associations for ${modelName}:`, error);
-        throw error;
+    // Esperar a que todos los modelos estén definidos
+    await Promise.all(Object.values(models));
+    logger.info('All models defined successfully');
+
+    // Configurar asociaciones
+    for (const modelName of Object.keys(models)) {
+      if (typeof models[modelName].associate === 'function') {
+        try {
+          await models[modelName].associate(models);
+          logger.info(`Associations configured for ${modelName}`);
+        } catch (error) {
+          logger.error(`Error configuring associations for ${modelName}:`, error);
+          throw error;
+        }
       }
     }
-  });
 
-  logger.info('All models and associations initialized successfully');
+    logger.info('All associations configured successfully');
 
-} catch (error) {
-  logger.error('Error during model initialization:', error);
-  throw error;
-}
-
-// Sincronizar modelos con la base de datos
-sequelize.sync({ alter: true })
-  .then(() => {
+    // Sincronizar con la base de datos
+    await sequelize.sync({ alter: true });
     logger.info('Database synchronized successfully');
-  })
-  .catch(error => {
-    logger.error('Error synchronizing database:', error);
+
+    return models;
+  } catch (error) {
+    logger.error('Database initialization failed:', error);
     throw error;
-  });
+  }
+};
+
+// Inicializar modelos y asociaciones
+const models = {};
+let initialized = false;
+
+const getModels = async () => {
+  if (!initialized) {
+    Object.assign(models, await initializeDatabase());
+    initialized = true;
+  }
+  return models;
+};
 
 module.exports = {
   sequelize,
-  models
+  models,
+  getModels
 };

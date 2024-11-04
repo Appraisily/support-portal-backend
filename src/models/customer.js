@@ -32,7 +32,10 @@ module.exports = (sequelize, DataTypes) => {
     timestamps: true
   });
 
-  Customer.associate = (models) => {
+  Customer.associate = async (models) => {
+    if (!models.Ticket) {
+      throw new Error('Ticket model not found when associating Customer');
+    }
     Customer.hasMany(models.Ticket, {
       foreignKey: 'customerId',
       as: 'tickets'
