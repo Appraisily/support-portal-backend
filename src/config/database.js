@@ -43,37 +43,55 @@ if (process.env.NODE_ENV === 'production') {
 logger.info('Initializing models...');
 const models = {};
 
-// Definir modelos uno por uno para mejor control de errores
 try {
-  models.Ticket = defineTicket(sequelize, DataTypes);
-  logger.info('Ticket model initialized');
-  
-  models.Message = defineMessage(sequelize, DataTypes);
-  logger.info('Message model initialized');
-  
-  models.Attachment = defineAttachment(sequelize, DataTypes);
-  logger.info('Attachment model initialized');
-  
+  // 1. Primero definimos TODOS los modelos
   models.Customer = defineCustomer(sequelize, DataTypes);
-  logger.info('Customer model initialized');
+  logger.info('Customer model defined');
   
   models.User = defineUser(sequelize, DataTypes);
-  logger.info('User model initialized');
+  logger.info('User model defined');
+  
+  models.Ticket = defineTicket(sequelize, DataTypes);
+  logger.info('Ticket model defined');
+  
+  models.Message = defineMessage(sequelize, DataTypes);
+  logger.info('Message model defined');
+  
+  models.Attachment = defineAttachment(sequelize, DataTypes);
+  logger.info('Attachment model defined');
 
-  // Configurar asociaciones
+  // 2. DESPUÉS de que todos los modelos estén definidos, configuramos las asociaciones
+  logger.info('Setting up model associations...');
+  
   Object.keys(models).forEach(modelName => {
     if (models[modelName].associate) {
-      models[modelName].associate(models);
+      try {
+        models[modelName].associate(models);
+        logger.info(`Associations configured for ${modelName}`);
+      } catch (error) {
+        logger.error(`Error configuring associations for ${modelName}:`, error);
+        throw error;
+      }
     }
   });
-  logger.info('Model associations configured');
+
+  logger.info('All models and associations initialized successfully');
 
 } catch (error) {
-  logger.error('Error initializing models:', error);
+  logger.error('Error during model initialization:', error);
   throw error;
 }
 
-// Exportar la conexión y los modelos
+// Sincronizar modelos con la base de datos
+sequelize.sync({ alter: true })
+  .then(() => {
+    logger.info('Database synchronized successfully');
+  })
+  .catch(error => {
+    logger.error('Error synchronizing database:', error);
+    throw error;
+  });
+
 module.exports = {
   sequelize,
   models
