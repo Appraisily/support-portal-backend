@@ -18,7 +18,7 @@ exports.login = async (req, res, next) => {
         id: '1',  // ID fijo para el admin
         role: 'admin'
       },
-      process.env['jwt-secret'],
+      process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 

@@ -4,7 +4,6 @@ const logger = require('./logger');
 class SecretManager {
   constructor() {
     this.client = new SecretManagerServiceClient();
-    // Use GOOGLE_CLOUD_PROJECT_ID instead of GOOGLE_CLOUD_PROJECT
     this.projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
     this.secrets = new Map();
   }
@@ -33,20 +32,29 @@ class SecretManager {
     logger.info('Loading secrets for project:', this.projectId);
 
     const requiredSecrets = [
+      // Secretos para la base de datos
       'CLOUD_SQL_CONNECTION_NAME',
       'DB_NAME',
       'DB_USER',
       'DB_PASSWORD',
+      
+      // Secretos para Gmail (si los necesitas)
       'GMAIL_CLIENT_ID',
       'GMAIL_CLIENT_SECRET',
       'GMAIL_REFRESH_TOKEN',
-      'jwt-secret'
+      
+      // Secretos para JWT y autenticación
+      'jwt-secret',
+      
+      // Credenciales de admin para el frontend
+      'ADMIN_EMAIL',
+      'ADMIN_PASSWORD'
     ];
 
     try {
       for (const secretName of requiredSecrets) {
         const value = await this.getSecret(secretName);
-        // For jwt-secret, convert to JWT_SECRET in env
+        // Para jwt-secret, convertir a JWT_SECRET en env
         const envName = secretName === 'jwt-secret' ? 'JWT_SECRET' : secretName;
         process.env[envName] = value;
         logger.info(`Loaded secret: ${secretName}`);

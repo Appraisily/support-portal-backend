@@ -52,8 +52,9 @@ async function startServer() {
       'DB_USER', 
       'DB_PASSWORD', 
       'CLOUD_SQL_CONNECTION_NAME',
-      'ADMIN_EMAIL',    // Añadir nuevas variables
-      'ADMIN_PASSWORD'  // Añadir nuevas variables
+      'JWT_SECRET',
+      'ADMIN_EMAIL',
+      'ADMIN_PASSWORD'
     ];
     const envVars = {};
     requiredVars.forEach(varName => {

@@ -17,10 +17,10 @@ exports.authenticate = async (req, res, next) => {
     const token = authHeader.split(' ')[1];
     logger.info('Verifying token with secret:', { 
       hasToken: !!token,
-      hasSecret: !!process.env['jwt-secret']
+      hasSecret: !!process.env.JWT_SECRET
     });
 
-    const decoded = jwt.verify(token, process.env['jwt-secret']);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     logger.info('Token verified successfully:', { userId: decoded.id });
     
     req.user = decoded;
