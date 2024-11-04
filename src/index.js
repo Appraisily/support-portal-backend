@@ -49,23 +49,33 @@ async function startServer() {
       throw new Error(`Missing required environment variables: ${Object.entries(envVars).filter(([,v]) => !v).map(([k]) => k).join(', ')}`);
     }
 
-    // 3. Inicializar base de datos
+    // 3. Inicializar y sincronizar base de datos
     logger.info('3. Initializing database...');
-    const { connectDB } = require('./config/database');
-    const dbConnected = await connectDB();
+    const { sequelize, models } = require('./config/database');
     
-    if (!dbConnected) {
-      throw new Error('Failed to connect to database');
-    }
+    logger.info('3.1 Synchronizing database models...');
+    await sequelize.sync();
+    logger.info('Database models synchronized successfully');
 
-    // 4. Iniciar servidor HTTP
-    logger.info('4. Starting HTTP server...');
+    // 4. Seed admin user
+    logger.info('4. Attempting to seed admin user...');
+    const { seedAdminUser } = require('./utils/seedAdmin');
+    await seedAdminUser();
+    logger.info('Admin user seeding completed');
+
+    // 5. Cargar rutas
+    logger.info('5. Loading routes...');
+    const routes = require('./routes');
+    app.use('/api', routes);
+
+    // 6. Iniciar servidor HTTP
+    logger.info('6. Starting HTTP server...');
     const PORT = process.env.PORT || 8080;
     const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${PORT}`);
     });
 
-    // 5. Manejar señales de terminación
+    // 7. Manejar señales de terminación
     process.on('SIGTERM', () => {
       logger.info('SIGTERM received. Shutting down gracefully...');
       server.close(() => {
@@ -83,7 +93,6 @@ async function startServer() {
       phase: error.phase || 'unknown'
     });
     
-    // Esperar un momento antes de salir para asegurar que los logs se envíen
     await new Promise(resolve => setTimeout(resolve, 1000));
     process.exit(1);
   }
