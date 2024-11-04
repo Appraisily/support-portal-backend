@@ -3,36 +3,34 @@ const logger = require('../utils/logger');
 
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
-    const socketPath = `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`;
-    logger.info(`Attempting to connect to Cloud SQL using socket path: ${socketPath}`);
+    const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
+    const dbName = process.env.DB_NAME || 'support_portal';
+    const dbUser = process.env.DB_USER || 'support_portal_user';
+    const dbPassword = process.env.DB_PASSWORD;
+
+    logger.info(`Initializing Cloud SQL connection for ${connectionName}`);
 
     const config = {
-      dialect: 'postgres', // Ensure dialect is 'postgres'
-      host: socketPath, // Set host to the Unix socket path
-      database: process.env.DB_NAME || 'support_portal',
-      username: process.env.DB_USER || 'support_portal_user',
-      password: process.env.DB_PASSWORD,
-      port: 5432, // Default PostgreSQL port
+      dialect: 'postgres',
+      dialectModule: require('pg'),
+      host: `/cloudsql/${connectionName}`,
+      database: dbName,
+      username: dbUser,
+      password: dbPassword,
+      dialectOptions: {
+        socketPath: `/cloudsql/${connectionName}`
+      },
       define: {
         timestamps: true
       },
       pool: {
         max: 5,
         min: 0,
-        acquire: 60000,
+        acquire: 30000,
         idle: 10000
       },
-      logging: (msg) => logger.debug(`Sequelize: ${msg}`),
-      retry: {
-        max: 5,
-      },
+      logging: (msg) => logger.debug(msg)
     };
-
-    logger.info('Initializing production PostgreSQL connection with config:', {
-      database: config.database,
-      socketPath: socketPath,
-      username: config.username
-    });
 
     return new Sequelize(config);
   } else {
@@ -73,7 +71,7 @@ const defineModels = () => {
 
 const connectDB = async () => {
   let retries = 5;
-  const retryDelay = 5000; // 5 seconds
+  const retryDelay = 5000;
 
   while (retries > 0) {
     try {
