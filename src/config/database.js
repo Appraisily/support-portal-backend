@@ -1,11 +1,9 @@
 const { Sequelize, DataTypes } = require('sequelize');
 const logger = require('../utils/logger');
-const fs = require('fs');
 
 const createSequelizeInstance = () => {
   const {
     NODE_ENV,
-    CLOUD_SQL_CONNECTION_NAME,
     DB_NAME,
     DB_USER,
     DB_PASSWORD
@@ -13,16 +11,14 @@ const createSequelizeInstance = () => {
 
   logger.info('Environment check:', {
     nodeEnv: NODE_ENV,
-    connectionName: CLOUD_SQL_CONNECTION_NAME,
     dbName: DB_NAME,
     dbUser: DB_USER,
     hasPassword: !!DB_PASSWORD
   });
 
   if (NODE_ENV === 'production') {
-    if (!CLOUD_SQL_CONNECTION_NAME || !DB_NAME || !DB_USER || !DB_PASSWORD) {
+    if (!DB_NAME || !DB_USER || !DB_PASSWORD) {
       const config = {
-        connectionName: !!CLOUD_SQL_CONNECTION_NAME,
         dbName: !!DB_NAME,
         dbUser: !!DB_USER,
         dbPassword: !!DB_PASSWORD
@@ -31,43 +27,17 @@ const createSequelizeInstance = () => {
       throw new Error('Missing required database configuration environment variables');
     }
 
-    const socketPath = `/cloudsql/${CLOUD_SQL_CONNECTION_NAME}`;
-
-    // Check if socket path exists and has correct permissions
-    try {
-      const exists = fs.existsSync(socketPath);
-      logger.info(`Socket path check: ${socketPath} exists: ${exists}`);
-      
-      if (exists) {
-        const stats = fs.statSync(socketPath);
-        logger.info('Socket file stats:', {
-          uid: stats.uid,
-          gid: stats.gid,
-          mode: stats.mode
-        });
-
-        const contents = fs.readdirSync('/cloudsql');
-        logger.info('Contents of /cloudsql directory:', contents);
-      }
-    } catch (error) {
-      logger.error('Socket file check failed:', {
-        error: error.message,
-        code: error.code,
-        path: error.path
-      });
-    }
-
     const config = {
       dialect: 'postgres',
-      host: socketPath,
+      host: '34.57.184.164',
+      port: 5432,
       database: DB_NAME,
       username: DB_USER,
       password: DB_PASSWORD,
       dialectOptions: {
-        socketPath: socketPath,
         ssl: false,
-        native: true,
-        keepAlive: true
+        keepAlive: true,
+        connectTimeout: 60000
       },
       pool: {
         max: 5,
@@ -81,7 +51,8 @@ const createSequelizeInstance = () => {
 
     logger.info('Sequelize configuration:', {
       dialect: config.dialect,
-      socketPath: config.host,
+      host: config.host,
+      port: config.port,
       database: config.database,
       username: config.username,
       poolConfig: config.pool,
