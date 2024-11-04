@@ -3,9 +3,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { connectDB } = require('./config/database');
-const { errorHandler } = require('./middleware/errorHandler');
-const routes = require('./routes');
 const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
 
@@ -34,16 +31,21 @@ async function startServer() {
   try {
     // Load secrets from Secret Manager in production
     if (process.env.NODE_ENV === 'production') {
+      logger.info('Loading secrets from Secret Manager...');
       await secretManager.loadSecrets();
+      logger.info('Secrets loaded successfully');
     }
 
-    // Connect to database
+    // Initialize database after secrets are loaded
+    const { connectDB } = require('./config/database');
     await connectDB();
 
-    // Routes
+    // Load routes after database is connected
+    const routes = require('./routes');
     app.use('/api', routes);
 
-    // Error handling
+    // Error handling middleware
+    const { errorHandler } = require('./middleware/errorHandler');
     app.use(errorHandler);
 
     // Start server
