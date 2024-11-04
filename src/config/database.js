@@ -3,30 +3,35 @@ const logger = require('../utils/logger');
 const fs = require('fs');
 
 const createSequelizeInstance = () => {
+  const {
+    NODE_ENV,
+    CLOUD_SQL_CONNECTION_NAME,
+    DB_NAME,
+    DB_USER,
+    DB_PASSWORD
+  } = process.env;
+
   logger.info('Environment check:', {
-    nodeEnv: process.env.NODE_ENV,
-    connectionName: process.env.CLOUD_SQL_CONNECTION_NAME,
-    socketPath: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`
+    nodeEnv: NODE_ENV,
+    connectionName: CLOUD_SQL_CONNECTION_NAME,
+    dbName: DB_NAME,
+    dbUser: DB_USER,
+    hasPassword: !!DB_PASSWORD
   });
 
-  if (process.env.NODE_ENV === 'production') {
-    const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
-    const dbName = process.env.DB_NAME;
-    const dbUser = process.env.DB_USER;
-    const dbPassword = process.env.DB_PASSWORD;
-
-    if (!connectionName || !dbName || !dbUser || !dbPassword) {
+  if (NODE_ENV === 'production') {
+    if (!CLOUD_SQL_CONNECTION_NAME || !DB_NAME || !DB_USER || !DB_PASSWORD) {
       const config = {
-        connectionName: !!connectionName,
-        dbName: !!dbName,
-        dbUser: !!dbUser,
-        dbPassword: !!dbPassword
+        connectionName: !!CLOUD_SQL_CONNECTION_NAME,
+        dbName: !!DB_NAME,
+        dbUser: !!DB_USER,
+        dbPassword: !!DB_PASSWORD
       };
       logger.error('Missing database configuration:', config);
       throw new Error('Missing required database configuration environment variables');
     }
 
-    const socketPath = `/cloudsql/${connectionName}`;
+    const socketPath = `/cloudsql/${CLOUD_SQL_CONNECTION_NAME}`;
 
     // Check if socket path exists and has correct permissions
     try {
@@ -40,6 +45,9 @@ const createSequelizeInstance = () => {
           gid: stats.gid,
           mode: stats.mode
         });
+
+        const contents = fs.readdirSync('/cloudsql');
+        logger.info('Contents of /cloudsql directory:', contents);
       }
     } catch (error) {
       logger.error('Socket file check failed:', {
@@ -51,14 +59,16 @@ const createSequelizeInstance = () => {
 
     const config = {
       dialect: 'postgres',
+      database: DB_NAME,
+      username: DB_USER,
+      password: DB_PASSWORD,
       dialectOptions: {
         socketPath,
-        ssl: true,
+        ssl: false,
+        native: true,
+        keepAlive: true,
+        statement_timeout: 60000
       },
-      host: socketPath,
-      database: dbName,
-      username: dbUser,
-      password: dbPassword,
       pool: {
         max: 5,
         min: 0,
@@ -75,10 +85,11 @@ const createSequelizeInstance = () => {
 
     logger.info('Sequelize configuration:', {
       dialect: config.dialect,
-      socketPath,
-      ssl: config.dialectOptions.ssl,
+      database: config.database,
+      username: config.username,
       poolConfig: config.pool,
-      retryEnabled: true
+      socketPath,
+      ssl: config.dialectOptions.ssl
     });
 
     logger.info('Creating Sequelize instance...');
