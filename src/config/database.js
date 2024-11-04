@@ -59,16 +59,17 @@ const createSequelizeInstance = () => {
 
     const config = {
       dialect: 'postgres',
-      host: socketPath,
       database: DB_NAME,
       username: DB_USER,
       password: DB_PASSWORD,
+      host: socketPath,
       dialectOptions: {
         socketPath: socketPath,
-        ssl: false,
-        native: true,
         keepAlive: true,
-        statement_timeout: 60000
+        // PostgreSQL specific options
+        client_encoding: 'UTF8',
+        application_name: 'support-portal-backend',
+        statement_timeout: 30000
       },
       pool: {
         max: 5,
@@ -78,7 +79,12 @@ const createSequelizeInstance = () => {
         handleDisconnects: true
       },
       retry: {
-        match: [/Deadlock/i, /Connection terminated/i],
+        match: [
+          /Deadlock/i,
+          /Connection terminated/i,
+          /Connection timed out/i,
+          /ECONNREFUSED/
+        ],
         max: 3
       },
       logging: msg => logger.debug(msg)
@@ -88,9 +94,12 @@ const createSequelizeInstance = () => {
       dialect: config.dialect,
       database: config.database,
       username: config.username,
+      host: config.host,
       poolConfig: config.pool,
-      socketPath,
-      ssl: config.dialectOptions.ssl
+      dialectOptions: {
+        ...config.dialectOptions,
+        password: undefined // Don't log password
+      }
     });
 
     logger.info('Creating Sequelize instance...');
