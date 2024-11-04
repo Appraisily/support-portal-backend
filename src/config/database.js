@@ -59,11 +59,12 @@ const createSequelizeInstance = () => {
 
     const config = {
       dialect: 'postgres',
+      host: socketPath,
       database: DB_NAME,
       username: DB_USER,
       password: DB_PASSWORD,
       dialectOptions: {
-        socketPath,
+        socketPath: socketPath,
         ssl: false,
         native: true,
         keepAlive: true,
