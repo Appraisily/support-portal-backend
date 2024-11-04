@@ -107,12 +107,16 @@ const connectDB = async (sequelize) => {
       await sequelize.authenticate();
       logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
-      if (process.env.NODE_ENV === 'development') {
+      if (process.env.NODE_ENV === 'production') {
+        logger.info('Synchronizing database models in production mode...');
+        await sequelize.sync();
+        logger.info('Database models synchronized successfully');
+      } else if (process.env.NODE_ENV === 'development') {
         logger.info('Synchronizing database models in development mode...');
         await sequelize.sync({ alter: true });
         logger.info('Database models synchronized successfully');
       }
-      return;
+      return true;
     } catch (error) {
       retries--;
       logger.error('Database connection error:', {
@@ -125,8 +129,8 @@ const connectDB = async (sequelize) => {
       });
 
       if (retries === 0) {
-        logger.error('Database connection failed after all retries. Exiting process.');
-        process.exit(1);
+        logger.error('Database connection failed after all retries');
+        return false;
       }
 
       logger.warn(`Database connection attempt failed. Retrying in ${retryDelay}ms... (${retries} attempts remaining)`);
@@ -136,10 +140,12 @@ const connectDB = async (sequelize) => {
 };
 
 let sequelize;
+let models;
+
 try {
   logger.info('Initializing database connection...');
   sequelize = createSequelizeInstance();
-  const models = defineModels(sequelize);
+  models = defineModels(sequelize);
 
   module.exports = {
     sequelize,
@@ -148,5 +154,9 @@ try {
   };
 } catch (error) {
   logger.error('Failed to initialize database:', error);
-  process.exit(1);
+  module.exports = {
+    sequelize: null,
+    connectDB: async () => false,
+    models: {}
+  };
 }
