@@ -47,7 +47,14 @@ async function startServer() {
 
     // 2. Verificar variables de entorno
     logger.info('2. Verifying environment variables...');
-    const requiredVars = ['DB_NAME', 'DB_USER', 'DB_PASSWORD', 'CLOUD_SQL_CONNECTION_NAME'];
+    const requiredVars = [
+      'DB_NAME', 
+      'DB_USER', 
+      'DB_PASSWORD', 
+      'CLOUD_SQL_CONNECTION_NAME',
+      'ADMIN_EMAIL',    // Añadir nuevas variables
+      'ADMIN_PASSWORD'  // Añadir nuevas variables
+    ];
     const envVars = {};
     requiredVars.forEach(varName => {
       envVars[varName] = !!process.env[varName];
@@ -66,25 +73,19 @@ async function startServer() {
     await sequelize.sync();
     logger.info('Database models synchronized successfully');
 
-    // 4. Seed admin user
-    logger.info('4. Attempting to seed admin user...');
-    const { seedAdminUser } = require('./utils/seedAdmin');
-    await seedAdminUser();
-    logger.info('Admin user seeding completed');
-
-    // 5. Cargar rutas
-    logger.info('5. Loading routes...');
+    // 4. Cargar rutas
+    logger.info('4. Loading routes...');
     const routes = require('./routes');
     app.use('/api', routes);
 
-    // 6. Iniciar servidor HTTP
-    logger.info('6. Starting HTTP server...');
+    // 5. Iniciar servidor HTTP
+    logger.info('5. Starting HTTP server...');
     const PORT = process.env.PORT || 8080;
     const server = app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${PORT}`);
     });
 
-    // 7. Manejar señales de terminación
+    // 6. Manejar señales de terminación
     process.on('SIGTERM', () => {
       logger.info('SIGTERM received. Shutting down gracefully...');
       server.close(() => {

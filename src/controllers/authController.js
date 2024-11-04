@@ -1,4 +1,3 @@
-const { models } = require('../config/database');
 const jwt = require('jsonwebtoken');
 const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
@@ -8,40 +7,29 @@ exports.login = async (req, res, next) => {
     const { email, password } = req.body;
     logger.info('Login attempt:', { email });
 
-    const user = await models.User.findOne({ 
-      where: { email }
-    });
-
-    if (!user) {
-      logger.warn('Login failed: User not found', { email });
-      throw new ApiError(401, 'Invalid email or password');
-    }
-
-    const isValidPassword = await user.comparePassword(password);
-    logger.info('Password check:', { 
-      email,
-      isValid: isValidPassword
-    });
-
-    if (!isValidPassword) {
-      logger.warn('Login failed: Invalid password', { email });
+    // Verificar contra las credenciales de Secret Manager
+    if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
+      logger.warn('Login failed: Invalid credentials');
       throw new ApiError(401, 'Invalid email or password');
     }
 
     const token = jwt.sign(
-      { id: user.id, role: user.role },
+      { 
+        id: '1',  // ID fijo para el admin
+        role: 'admin'
+      },
       process.env['jwt-secret'],
       { expiresIn: '24h' }
     );
 
-    logger.info(`User ${user.email} logged in`);
+    logger.info(`Admin logged in successfully`);
     res.json({
       token,
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role
+        id: '1',
+        name: 'Admin',
+        email: process.env.ADMIN_EMAIL,
+        role: 'admin'
       }
     });
   } catch (error) {
