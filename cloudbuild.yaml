@@ -38,8 +38,6 @@ steps:
       - '--set-secrets'
       - >-
         CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,
-        DB_HOST=DB_HOST:latest,
-        DB_PORT=DB_PORT:latest,
         DB_NAME=DB_NAME:latest,
         DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
