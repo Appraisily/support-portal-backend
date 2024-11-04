@@ -5,8 +5,6 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
-const { testDatabaseConnection } = require('./utils/dbTest');
-const { seedAdminUser } = require('./utils/seedAdmin');
 
 const app = express();
 
@@ -36,17 +34,30 @@ async function startServer() {
       logger.info('Loading secrets from Secret Manager...');
       await secretManager.loadSecrets();
       logger.info('Secrets loaded successfully');
-
-      // Test database connectivity before proceeding
-      logger.info('Testing database connectivity...');
-      const connectionSuccess = await testDatabaseConnection();
-      if (!connectionSuccess) {
-        throw new Error('Database connectivity test failed');
-      }
     }
 
-    // Initialize database after secrets are loaded
+    // Verify environment variables after secrets are loaded
+    logger.info('Verifying environment variables...');
+    const requiredVars = ['DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+    const missingVars = requiredVars.filter(varName => !process.env[varName]);
+    if (missingVars.length > 0) {
+      throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+    }
+    logger.info('Environment variables verified successfully');
+
+    // Now load database modules after secrets are loaded
     const { connectDB } = require('./config/database');
+    const { testDatabaseConnection } = require('./utils/dbTest');
+    const { seedAdminUser } = require('./utils/seedAdmin');
+
+    // Test database connectivity
+    logger.info('Testing database connectivity...');
+    const connectionSuccess = await testDatabaseConnection();
+    if (!connectionSuccess) {
+      throw new Error('Database connectivity test failed');
+    }
+
+    // Initialize database connection
     await connectDB();
 
     // Seed admin user
