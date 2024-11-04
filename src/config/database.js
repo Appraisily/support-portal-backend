@@ -4,48 +4,37 @@ const fs = require('fs');
 
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
-    const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
-    const dbName = process.env.DB_NAME;
-    const dbUser = process.env.DB_USER;
+    const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME?.trim();
+    const dbName = process.env.DB_NAME?.trim();
+    const dbUser = process.env.DB_USER?.trim();
     const dbPassword = process.env.DB_PASSWORD?.trim();
     const socketPath = `/cloudsql/${connectionName}`;
 
-    // Check environment
-    logger.info('Environment check:', {
-      nodeEnv: process.env.NODE_ENV,
+    // Validate required environment variables
+    if (!connectionName || !dbName || !dbUser || !dbPassword) {
+      throw new Error('Missing required database configuration environment variables');
+    }
+
+    logger.info('Database configuration:', {
       connectionName,
       dbName,
       dbUser,
-      socketPath
+      socketPath,
+      nodeEnv: process.env.NODE_ENV
     });
 
-    // Check if socket path exists
+    // Check socket directory
     try {
-      const socketExists = fs.existsSync(socketPath);
-      logger.info(`Socket path check: ${socketPath} exists: ${socketExists}`);
-      
-      if (socketExists) {
-        const stats = fs.statSync(socketPath);
-        logger.info('Socket file stats:', {
-          mode: stats.mode,
-          uid: stats.uid,
-          gid: stats.gid
-        });
+      if (!fs.existsSync('/cloudsql')) {
+        logger.error('Cloud SQL socket directory does not exist');
+        fs.mkdirSync('/cloudsql', { recursive: true });
+        logger.info('Created /cloudsql directory');
       }
-    } catch (error) {
-      logger.error('Error checking socket path:', {
-        error: error.message,
-        code: error.code,
-        path: socketPath
-      });
-    }
 
-    // List contents of /cloudsql directory
-    try {
-      const cloudSqlFiles = fs.readdirSync('/cloudsql');
-      logger.info('Contents of /cloudsql directory:', cloudSqlFiles);
+      const socketDirContents = fs.readdirSync('/cloudsql');
+      logger.info('Cloud SQL socket directory contents:', socketDirContents);
     } catch (error) {
-      logger.error('Error reading /cloudsql directory:', {
+      logger.error('Error accessing Cloud SQL socket directory:', {
         error: error.message,
         code: error.code
       });
@@ -57,68 +46,29 @@ const createSequelizeInstance = () => {
       database: dbName,
       username: dbUser,
       password: dbPassword,
-      host: socketPath,
       dialectOptions: {
-        // Use Unix domain socket
-        socketPath: socketPath,
+        socketPath,
         keepAlive: true,
-        // Retry on connection lost
-        retry: {
-          match: [
-            /Connection terminated/,
-            /Connection reset by peer/,
-            /getaddrinfo ENOTFOUND/,
-            /ECONNREFUSED/,
-            /ETIMEDOUT/,
-            /PROTOCOL_CONNECTION_LOST/
-          ],
-          max: 3
-        },
-        // Enable detailed logging
-        logging: true,
-        debug: true,
         // Increase timeouts
-        connectTimeout: 30000,
+        connectTimeout: 60000,
         // Use SSL in production
-        ssl: process.env.NODE_ENV === 'production' ? {
+        ssl: {
           rejectUnauthorized: false
-        } : false
+        }
       },
       pool: {
         max: 5,
         min: 0,
         acquire: 60000,
         idle: 10000,
-        // Enable connection error handling
-        handleDisconnects: true,
-        // Validate connection before use
-        validate: async (connection) => {
-          try {
-            await connection.query('SELECT 1');
-            return true;
-          } catch (err) {
-            logger.error('Connection validation failed:', err);
-            return false;
-          }
-        }
+        handleDisconnects: true
       },
-      // Enable retry on failure
       retry: {
-        max: 3
+        max: 5,
+        timeout: 60000
       },
       logging: (msg) => logger.debug(`[Sequelize] ${msg}`)
     };
-
-    logger.info('Sequelize configuration:', {
-      database: config.database,
-      dialect: config.dialect,
-      host: config.host,
-      socketPath: config.dialectOptions.socketPath,
-      poolConfig: config.pool,
-      ssl: !!config.dialectOptions.ssl,
-      username: config.username,
-      retryEnabled: !!config.retry
-    });
 
     try {
       logger.info('Creating Sequelize instance...');
@@ -126,11 +76,9 @@ const createSequelizeInstance = () => {
       logger.info('Sequelize instance created successfully');
       return sequelize;
     } catch (error) {
-      logger.error('Error creating Sequelize instance:', {
+      logger.error('Failed to create Sequelize instance:', {
         error: error.message,
-        stack: error.stack,
         code: error.original?.code,
-        errno: error.original?.errno,
         detail: error.original?.detail
       });
       throw error;
@@ -179,27 +127,6 @@ const connectDB = async () => {
   while (retries > 0) {
     try {
       logger.info('Attempting database connection...');
-      
-      // Test socket file before connection
-      if (process.env.NODE_ENV === 'production') {
-        const socketPath = `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`;
-        try {
-          const stats = fs.statSync(socketPath);
-          logger.info('Socket file check before connection:', {
-            exists: true,
-            mode: stats.mode,
-            uid: stats.uid,
-            gid: stats.gid
-          });
-        } catch (error) {
-          logger.error('Socket file check failed:', {
-            error: error.message,
-            code: error.code,
-            path: socketPath
-          });
-        }
-      }
-
       await sequelize.authenticate();
       logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
 
@@ -217,8 +144,6 @@ const connectDB = async () => {
         errno: error.original?.errno,
         syscall: error.original?.syscall,
         address: error.original?.address,
-        port: error.original?.port,
-        stack: error.stack,
         detail: error.original?.detail
       });
 
