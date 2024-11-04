@@ -8,25 +8,20 @@ const createSequelizeInstance = () => {
 
     const config = {
       dialect: 'postgres',
+      host: '/cloudsql/' + socketPath,
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
       dialectOptions: {
-        // For Cloud SQL Proxy
+        // For Cloud SQL Unix Domain Socket
         socketPath: `/cloudsql/${socketPath}`,
-        ssl: {
-          rejectUnauthorized: false,
-        },
-        // Additional options for stability
-        statement_timeout: 60000,
-        idle_in_transaction_session_timeout: 60000,
-        connectTimeout: 60000
       },
       pool: {
         max: 5,
         min: 0,
         acquire: 60000,
-        idle: 10000
+        idle: 10000,
+        handleDisconnects: true
       },
       logging: (msg) => logger.debug(msg),
       retry: {
@@ -38,7 +33,7 @@ const createSequelizeInstance = () => {
     logger.info('Initializing production PostgreSQL connection with config:', {
       database: config.database,
       username: config.username,
-      socketPath: config.dialectOptions.socketPath
+      host: config.host
     });
 
     return new Sequelize(config);
