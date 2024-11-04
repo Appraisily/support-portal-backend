@@ -11,7 +11,7 @@ const secretManager = require('./utils/secretManager');
 
 const app = express();
 
-// Security middleware
+// Seguridad middleware
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
@@ -29,24 +29,28 @@ app.get('/_health', (req, res) => {
   res.status(200).send('OK');
 });
 
+// Añadir registros de depuración para `connectDB`
+console.log('Tipo de connectDB:', typeof connectDB);
+console.log('connectDB:', connectDB);
+
 // Load secrets and start server
 async function startServer() {
   try {
-    // Load secrets from Secret Manager in production
+    // Cargar secretos desde Secret Manager en producción
     if (process.env.NODE_ENV === 'production') {
       await secretManager.loadSecrets();
     }
 
-    // Connect to database
+    // Conectar a la base de datos
     await connectDB();
 
-    // Routes
+    // Rutas
     app.use('/api', routes);
 
-    // Error handling
+    // Manejo de errores
     app.use(errorHandler);
 
-    // Start server
+    // Iniciar servidor
     const PORT = process.env.PORT || 8080;
     app.listen(PORT, '0.0.0.0', () => {
       logger.info(`Server running on port ${PORT}`);
