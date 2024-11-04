@@ -6,12 +6,25 @@ const logger = require('../utils/logger');
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    logger.info('Login attempt:', { email });
 
     const user = await models.User.findOne({ 
       where: { email }
     });
 
-    if (!user || !(await user.comparePassword(password))) {
+    if (!user) {
+      logger.warn('Login failed: User not found', { email });
+      throw new ApiError(401, 'Invalid email or password');
+    }
+
+    const isValidPassword = await user.comparePassword(password);
+    logger.info('Password check:', { 
+      email,
+      isValid: isValidPassword
+    });
+
+    if (!isValidPassword) {
+      logger.warn('Login failed: Invalid password', { email });
       throw new ApiError(401, 'Invalid email or password');
     }
 

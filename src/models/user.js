@@ -1,4 +1,7 @@
-module.exports = (sequelize, DataTypes) => {
+const { DataTypes } = require('sequelize');
+const bcrypt = require('bcryptjs');
+
+module.exports = (sequelize) => {
   const User = sequelize.define('User', {
     id: {
       type: DataTypes.UUID,
@@ -22,38 +25,26 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     role: {
-      type: DataTypes.ENUM('admin', 'agent', 'user'),
+      type: DataTypes.ENUM('admin', 'user'),
       defaultValue: 'user'
-    },
-    preferences: {
-      type: DataTypes.JSONB,
-      defaultValue: {
-        notifications: true,
-        theme: 'light'
-      }
     }
   }, {
-    timestamps: true,
     hooks: {
-      beforeSave: async (user) => {
+      beforeCreate: async (user) => {
+        if (user.password) {
+          user.password = await bcrypt.hash(user.password, 10);
+        }
+      },
+      beforeUpdate: async (user) => {
         if (user.changed('password')) {
-          const bcrypt = require('bcryptjs');
-          user.password = await bcrypt.hash(user.password, 12);
+          user.password = await bcrypt.hash(user.password, 10);
         }
       }
     }
   });
 
   User.prototype.comparePassword = async function(candidatePassword) {
-    const bcrypt = require('bcryptjs');
-    return await bcrypt.compare(candidatePassword, this.password);
-  };
-
-  User.associate = (models) => {
-    User.hasMany(models.Ticket, {
-      foreignKey: 'assignedToId',
-      as: 'assignedTickets'
-    });
+    return bcrypt.compare(candidatePassword, this.password);
   };
 
   return User;
