@@ -1,4 +1,3 @@
-// config/database.js
 const { Sequelize, DataTypes } = require('sequelize');
 const logger = require('../utils/logger');
 const fs = require('fs');
@@ -29,7 +28,7 @@ const createSequelizeInstance = () => {
       socketPath
     });
 
-    // Verificar el directorio del socket y los permisos
+    // Verify socket directory and permissions
     try {
       if (!fs.existsSync('/cloudsql')) {
         logger.info('Creating /cloudsql directory');
