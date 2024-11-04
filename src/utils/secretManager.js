@@ -4,7 +4,7 @@ const logger = require('./logger');
 class SecretManager {
   constructor() {
     this.client = new SecretManagerServiceClient();
-    this.projectId = process.env.GOOGLE_CLOUD_PROJECT;
+    this.projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
     this.secrets = new Map();
   }
 
@@ -26,7 +26,7 @@ class SecretManager {
 
   async loadSecrets() {
     if (!this.projectId) {
-      throw new Error('GOOGLE_CLOUD_PROJECT environment variable is not set');
+      throw new Error('GOOGLE_CLOUD_PROJECT_ID environment variable is not set');
     }
 
     logger.info('Loading secrets for project:', this.projectId);
