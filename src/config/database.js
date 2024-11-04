@@ -7,12 +7,13 @@ const createSequelizeInstance = () => {
     const dbName = process.env.DB_NAME || 'support_portal';
     const dbUser = process.env.DB_USER || 'support_portal_user';
     const dbPassword = process.env.DB_PASSWORD;
+    const socketPath = `/cloudsql/${connectionName}/.s.PGSQL.5432`;
 
     logger.info('Production environment detected, initializing Cloud SQL connection with params:', {
       connectionName,
       dbName,
       dbUser,
-      socketPath: `/cloudsql/${connectionName}`
+      socketPath
     });
 
     const config = {
@@ -21,17 +22,11 @@ const createSequelizeInstance = () => {
       database: dbName,
       username: dbUser,
       password: dbPassword,
-      host: '/cloudsql',
       dialectOptions: {
-        socketPath: `/cloudsql/${connectionName}`,
-        // Required for Cloud SQL
+        socketPath,
         ssl: false,
-        // Additional connection parameters
         keepAlive: true,
         connectTimeout: 30000
-      },
-      define: {
-        timestamps: true
       },
       pool: {
         max: 5,
