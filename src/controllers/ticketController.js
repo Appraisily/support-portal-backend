@@ -6,34 +6,37 @@ exports.listTickets = async (req, res, next) => {
     const { status, page = 1, limit = 10 } = req.query;
     const query = status ? { status } : {};
 
-    const tickets = await TicketService.listTickets(query, {
+    const result = await TicketService.listTickets(query, {
       page,
-      limit,
-      populate: [
-        { path: 'customer', select: 'id name email avatar' },
-        { path: 'messages' }
-      ]
+      limit
     });
 
-    res.json({
-      tickets: tickets.tickets.map(ticket => ({
-        id: ticket._id,
+    const response = {
+      tickets: result.tickets.map(ticket => ({
+        id: ticket.id,
         subject: ticket.subject,
-        customer: {
-          id: ticket.customer._id,
+        customer: ticket.customer ? {
+          id: ticket.customer.id,
           name: ticket.customer.name,
-          email: ticket.customer.email,
-          avatar: ticket.customer.avatar
-        },
+          email: ticket.customer.email
+        } : null,
         status: ticket.status,
         priority: ticket.priority,
         createdAt: ticket.createdAt.toISOString(),
         lastUpdated: ticket.updatedAt.toISOString(),
         category: ticket.category,
-        messages: ticket.messages
-      }))
-    });
+        messages: ticket.messages || []
+      })),
+      pagination: {
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages
+      }
+    };
+
+    res.json(response);
   } catch (error) {
+    logger.error('Error in listTickets:', error);
     next(error);
   }
 };
@@ -41,7 +44,27 @@ exports.listTickets = async (req, res, next) => {
 exports.getTicket = async (req, res, next) => {
   try {
     const ticket = await TicketService.getTicketById(req.params.id);
-    res.json({ ticket });
+    
+    const response = {
+      ticket: {
+        id: ticket.id,
+        subject: ticket.subject,
+        customer: ticket.customer ? {
+          id: ticket.customer.id,
+          name: ticket.customer.name,
+          email: ticket.customer.email
+        } : null,
+        status: ticket.status,
+        priority: ticket.priority,
+        createdAt: ticket.createdAt.toISOString(),
+        lastUpdated: ticket.updatedAt.toISOString(),
+        category: ticket.category,
+        messages: ticket.messages || [],
+        attachments: ticket.attachments || []
+      }
+    };
+
+    res.json(response);
   } catch (error) {
     next(error);
   }
