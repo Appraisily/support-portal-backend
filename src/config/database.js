@@ -4,8 +4,8 @@ const logger = require('../utils/logger');
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
     const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
-    const dbName = process.env.DB_NAME || 'support_portal';
-    const dbUser = process.env.DB_USER || 'support_portal_user';
+    const dbName = process.env.DB_NAME;
+    const dbUser = process.env.DB_USER;
     const dbPassword = process.env.DB_PASSWORD;
 
     logger.info('Production environment detected, initializing Cloud SQL connection with params:', {
@@ -20,30 +20,27 @@ const createSequelizeInstance = () => {
       database: dbName,
       username: dbUser,
       password: dbPassword,
-      host: '/cloudsql',
-      dialectOptions: {
-        socketPath: `/cloudsql/${connectionName}`,
-        ssl: false,
-        keepAlive: true,
-        connectTimeout: 30000
-      },
+      host: '/cloudsql/' + connectionName,
       pool: {
         max: 5,
         min: 0,
         acquire: 30000,
-        idle: 10000
+        idle: 10000,
+        handleDisconnects: true
+      },
+      dialectOptions: {
+        socketPath: '/cloudsql/' + connectionName
       },
       logging: (msg) => logger.debug(`[Sequelize] ${msg}`)
     };
 
     logger.info('Sequelize configuration:', {
-      dialect: config.dialect,
       database: config.database,
-      username: config.username,
+      dialect: config.dialect,
       host: config.host,
-      socketPath: config.dialectOptions.socketPath,
-      ssl: config.dialectOptions.ssl,
-      poolConfig: config.pool
+      poolConfig: config.pool,
+      ssl: false,
+      username: config.username
     });
 
     try {
@@ -121,9 +118,7 @@ const connectDB = async () => {
         errno: error.original?.errno,
         syscall: error.original?.syscall,
         address: error.original?.address,
-        host: error.original?.host,
         port: error.original?.port,
-        database: error.original?.database,
         stack: error.stack
       });
 
