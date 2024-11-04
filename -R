@@ -1,0 +1,527 @@
+[33mcommit 4793c8c563227d601fb6559d9b5b38e7c939fc50[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:27:07 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 0925afe46ad65b39f340ff8c85a75bee1f69b5ab[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:26:51 2024 +0100
+
+    Update dbTest.js
+
+[33mcommit abf43d484992babbeae9a019e29cf95b273dc0ea[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:26:30 2024 +0100
+
+    Update database.js
+
+[33mcommit 7e2fd9d93c16ffa0949494e27f365b3cec314d40[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:24:51 2024 +0100
+
+    Update database.js
+
+[33mcommit 931e7f0843ef2ecf5cbfac27afa9a76bd8a624d9[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:24:28 2024 +0100
+
+    Update dbTest.js
+
+[33mcommit 79be844a5f9389bafd99fed5ada98a018684bfdc[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:24:02 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit d7d260b68329f38f40b0356ef8084e20b5b5c724[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:19:43 2024 +0100
+
+    Update index.js
+
+[33mcommit 32bdeaab2b2d2fda55df136ee5f77af8d677d7bc[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:19:25 2024 +0100
+
+    Create dbTest.js
+
+[33mcommit d56dc1c34f8e7d6181bd85d0ac1397171a5f3fd9[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:16:22 2024 +0100
+
+    Update database.js
+
+[33mcommit a548d54f06c463f9f6665634dc83f8805a4b170f[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:14:14 2024 +0100
+
+    Update database.js
+
+[33mcommit bfb8da763d33b1de708f5157c90c4319c9b3afbb[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 11:08:02 2024 +0100
+
+    Update database.js
+
+[33mcommit 0fdfda707ee73a63b2ca263b12d6bd684c6972b4[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:56:56 2024 +0100
+
+    Update secretManager.js
+
+[33mcommit e7a58896cf09969cf9623e7fbdb62b8ae82e7649[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:54:43 2024 +0100
+
+    Update secretManager.js
+
+[33mcommit bb02f068944bc25b0cd3684f9d2dafc3d4cd1eff[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:53:59 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit fed71593ce83622fe97582398d45f63d79b0ab29[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:50:35 2024 +0100
+
+    Update index.js
+
+[33mcommit 7163f35edcbd818dbe21b83c9004af3c86439ced[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:50:20 2024 +0100
+
+    Update secretManager.js
+
+[33mcommit f1b174bfba9346b1544d5e0648a6286eb94c82c9[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:46:19 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 512934a9ffd5e505f04a6b13e00d1954c6d42a1a[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:41:27 2024 +0100
+
+    Update index.js
+
+[33mcommit 256d1f95bfa2d73a8b13152b4dd0ae28e6b74b70[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:38:34 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 573fcee39db662167f76a538186f7b3804d395ac[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:36:04 2024 +0100
+
+    Update database.js
+
+[33mcommit 6574cb35b6bcc43c68603797fef77b3c02bad58b[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:35:34 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 8b33a4d592f542ae7b03548a7f9905a324c2f244[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:30:50 2024 +0100
+
+    Update database.js
+
+[33mcommit 71d5cdbba8c8cd896ce201f6501549a9b0cad8e2[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:21:48 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 8a6e9fef4125222b3e7f17585ab765ab9776cd31[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:17:25 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit a97dc8aee7aa45d66f0e8a52a532265985e8bc5a[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:11:44 2024 +0100
+
+    Update index.js
+
+[33mcommit 09dbc52850e0d46e0764a63a3e7d767f48a93d7a[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:11:25 2024 +0100
+
+    Update database.js
+
+[33mcommit 22af7321119103c2c597a00430a910789b872b91[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:11:06 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit fd46386581388f6285415c2b6181de305f308c04[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:02:17 2024 +0100
+
+    Update index.js
+
+[33mcommit 0957a21440bf7a5e1d51c416969bab7e62e44115[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 10:01:32 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit e0c3ae8ff3fcede21642c3f0eabec752df654415[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:53:31 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit b1b9a598a9cac9b056226aade687a6664bba52c5[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:48:34 2024 +0100
+
+    Update index.js
+
+[33mcommit d0bf5bef64d3c215fc65a2be62e09da424cf0c2c[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:48:10 2024 +0100
+
+    Update database.js
+
+[33mcommit 85271e223c0d6e1a94b9c01b1226f46b027be31a[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:35:38 2024 +0100
+
+    Update database.js
+
+[33mcommit eab54b34fdeb760f9d79fd22299352e921b9f649[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:34:44 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 7449135b28b9ded8a8390b7ff0508dbdfe851acc[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:25:07 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 8b2a23406cbb26f3e40eabe6ff5f838d77c11b35[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:24:50 2024 +0100
+
+    Update database.js
+
+[33mcommit 6894d93a1c630e217d6cfd0715d63f3e07d61c5a[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:20:53 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 205f763d21e7a67d4c00c18204801b1330421e94[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:20:39 2024 +0100
+
+    Update database.js
+
+[33mcommit 45a53ce5edabf5dd3e4b5d586019156496240e13[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:17:56 2024 +0100
+
+    Update database.js
+
+[33mcommit 3289d1771af27457b59ea4f5d8a54d321a43aafb[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:14:19 2024 +0100
+
+    Update database.js
+
+[33mcommit b7da02fe33c0032c58b0452faa4ac1b7530e4039[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:10:19 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit c08f1ce21d11a523b55483ad687c1c2a1004b49f[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:07:29 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit f8b6e460df0c61cdfc8e78703109ce826e7edc26[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 09:07:15 2024 +0100
+
+    Update database.js
+
+[33mcommit 046908300b19e8fb642590d16afc92ab5f372807[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:39:17 2024 +0100
+
+    Update .env
+
+[33mcommit 337c39c3d4707f4acf1915b4947b44d4b4c13be1[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:39:02 2024 +0100
+
+    Update database.js
+
+[33mcommit bfce0aa531d11486cf615f7d3e38e4d9cb1cb0b6[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:38:42 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 346c0a4658c502c6737e6f237953f6bc8b412a51[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:17:53 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 368f4c9818921d94e048f50531b7fecbae566ebb[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:17:42 2024 +0100
+
+    Update database.js
+
+[33mcommit 74a32082e392f5fb526a901b7528eda9f64c586d[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:06:09 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit d657b9613062dcab83571336a1436ff1295870e4[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:05:57 2024 +0100
+
+    Update database.js
+
+[33mcommit 136fb4730f13d1cee36484f61394be6dd35fda4e[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:01:41 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit a3e2f18cd81902a74a96b679af6c9d72a75a50f5[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 08:01:26 2024 +0100
+
+    Update database.js
+
+[33mcommit 7656591fe00d7f5d9d81eef6ee92a79102d3bc8e[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 07:57:44 2024 +0100
+
+    Update database.js
+
+[33mcommit 5ab500bbb64a70c0551c638ff73a8165be422795[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 07:52:22 2024 +0100
+
+    Update database.js
+
+[33mcommit 5459e859a7b5cb038bc16dc56f6bdada953a1cb6[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 07:48:43 2024 +0100
+
+    Update .env
+
+[33mcommit e9a458c0944e7d9f58c308722521c84ecaa658da[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 07:48:23 2024 +0100
+
+    Update database.js
+
+[33mcommit cdbabb949c5dd2db5e5eac87d7b0db960a81d89f[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 07:42:47 2024 +0100
+
+    Update .env
+
+[33mcommit 0d701ea3c1f19235dc370e64483a6f70366cf5d8[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 07:42:23 2024 +0100
+
+    Update database.js
+
+[33mcommit 51b08c5c3bf843b866c4a876b167062a0cbe7b64[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:38:51 2024 +0100
+
+    Update database.js
+
+[33mcommit bb7d1c3af3c3fbbdfd506203ed2282a59192cdef[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:33:33 2024 +0100
+
+    Update database.js
+
+[33mcommit 0050b37ef1466c773afd5f17f332a9ee3765d498[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:30:42 2024 +0100
+
+    Update database.js
+
+[33mcommit 721c45f5a86f0fc2d3c8694750ac6e98bdb4d020[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:28:22 2024 +0100
+
+    Update database.js
+
+[33mcommit c0d4a5b5956195b0f06a9d4b896ff39d69cfe545[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:23:18 2024 +0100
+
+    Update database.js
+
+[33mcommit 1c9d34c7a53c4b3d4b37c9f2eb9f6e872c4ae7b5[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:16:27 2024 +0100
+
+    Update database.js
+
+[33mcommit 3e0429d88ca1dedda9ff8b16704caa61274e941c[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:10:18 2024 +0100
+
+    Update database.js
+
+[33mcommit d083bd2e6137c75b00b4f8407339a6b2b058b2b1[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:05:29 2024 +0100
+
+    Update database.js
+
+[33mcommit def242ac7a78a55d47362386cd1971fc4de6e6e5[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 01:02:02 2024 +0100
+
+    Update database.js
+
+[33mcommit 7ddf94b5a1e7d138c5189c819a9d9bc00f39b611[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:58:00 2024 +0100
+
+    Update database.js
+
+[33mcommit d0e483d05580184580a9e823abba0440b802471d[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:54:28 2024 +0100
+
+    Update database.js
+
+[33mcommit d1bed82a18f8b34455d58a59214ca95086a3b529[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:50:27 2024 +0100
+
+    Update database.js
+
+[33mcommit 53307661507a79e91b004c10ee1bb71d242baf4c[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:47:41 2024 +0100
+
+    Update database.js
+
+[33mcommit 62d510098d28e6e2bb952fb4f36866613a75895d[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:43:15 2024 +0100
+
+    Update database.js
+
+[33mcommit 4d2530f6e68aa60ba51ad9f003144c9118fe95dd[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:40:05 2024 +0100
+
+    Update database.js
+
+[33mcommit fd1bcb4d84dc8c8210725ed26fc5a1c786c17d9f[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:34:46 2024 +0100
+
+    Update database.js
+
+[33mcommit 34322c0f0d61bc021b48591889d09c9e2efe776b[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:31:13 2024 +0100
+
+    Update database.js
+
+[33mcommit 4e19c7a4095a58e2497b1f3a993bd28294a7dd49[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:27:01 2024 +0100
+
+    Update database.js
+
+[33mcommit cbac492dfea91109fed73ac6e3414f937a8538ea[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Mon Nov 4 00:23:03 2024 +0100
+
+    Update database.js
+
+[33mcommit 73488c0dfd91ec3b2a3951d8bb14e41239e477ea[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 23:57:59 2024 +0100
+
+    Update database.js
+
+[33mcommit 17a14693c4318fd6835ed859b2ce899e10c00c8d[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 23:57:41 2024 +0100
+
+    Update package.json
+
+[33mcommit 590ede86f43b7f8576e5537a80870abda148ac21[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 23:53:22 2024 +0100
+
+    Update package.json
+
+[33mcommit 2f3766afc1b26ea01d2ea15dfbe12522853d09f7[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 23:52:56 2024 +0100
+
+    Update database.js
+
+[33mcommit 5b69056f641c85cd61c04155984f128d363dc79e[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 20:49:15 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 5b08979f56bbfc87ce0c18b0d3c93d8506d8f4b4[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 20:31:03 2024 +0100
+
+    Update database.js
+
+[33mcommit 55e3b96c342107dd7b94905539651540fc47de61[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 20:30:40 2024 +0100
+
+    Update purchaseItem.js
+
+[33mcommit 3bfcb60c0ee35e75391941f723c2c1f9eb9a8384[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 20:30:25 2024 +0100
+
+    Update purchase.js
+
+[33mcommit bfb6cc6134d2c9172ed1ee71ac7ce299adda5c0c[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 20:27:42 2024 +0100
+
+    Update cloudbuild.yaml
+
+[33mcommit 6794d2eece1f72910caf5031cdc547b6486c29be[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 20:27:18 2024 +0100
+
+    Update database.js
+
+[33mcommit aac9a69712ed5f73d458c43f22a8b98f00eb9f85[m
+Author: Appraisily <134934621+Appraisily@users.noreply.github.com>
+Date:   Sun Nov 3 20:22:27 2024 +0100
+
+    Update secretManager.js

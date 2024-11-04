@@ -29,20 +29,19 @@ const createSequelizeInstance = () => {
 
     const config = {
       dialect: 'postgres',
-      host: '34.57.184.164',
-      port: 5432,
+      host: `/cloudsql/civil-forge-403609:us-central1:support-portal-db`,
       database: DB_NAME,
       username: DB_USER,
       password: DB_PASSWORD,
       dialectOptions: {
-        ssl: false,
+        socketPath: `/cloudsql/civil-forge-403609:us-central1:support-portal-db`,
         keepAlive: true,
-        connectTimeout: 60000
+        connectTimeout: 30000
       },
       pool: {
         max: 5,
         min: 0,
-        acquire: 60000,
+        acquire: 30000,
         idle: 10000,
         handleDisconnects: true
       },

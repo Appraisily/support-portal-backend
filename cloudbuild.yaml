@@ -31,8 +31,10 @@ steps:
       - '10'
       - '--port'
       - '8080'
+      - '--add-cloudsql-instances'
+      - 'civil-forge-403609:us-central1:support-portal-db'
       - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID'
+      - 'NODE_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID,CLOUD_SQL_CONNECTION_NAME=civil-forge-403609:us-central1:support-portal-db'
       - '--set-secrets'
       - >-
         DB_NAME=DB_NAME:latest,
