@@ -36,9 +36,12 @@ steps:
       - '--service-account'
       - '856401495068-compute@developer.gserviceaccount.com'
       - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID,CLOUD_SQL_CONNECTION_NAME=$PROJECT_ID:us-central1:support-portal-db,DB_NAME=support_portal,DB_USER=support_portal_user'
+      - 'NODE_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID'
       - '--set-secrets'
       - >-
+        CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,
+        DB_NAME=DB_NAME:latest,
+        DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
         GMAIL_CLIENT_ID=GMAIL_CLIENT_ID:latest,
         GMAIL_CLIENT_SECRET=GMAIL_CLIENT_SECRET:latest,
