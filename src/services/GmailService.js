@@ -3,6 +3,13 @@ const logger = require('../utils/logger');
 
 class GmailService {
   constructor() {
+    if (!process.env.GMAIL_USER_EMAIL) {
+      throw new Error('GMAIL_USER_EMAIL environment variable is not set');
+    }
+
+    this.userEmail = process.env.GMAIL_USER_EMAIL;
+    logger.info(`Initializing Gmail service for: ${this.userEmail}`);
+
     this.oauth2Client = new google.auth.OAuth2(
       process.env.GMAIL_CLIENT_ID,
       process.env.GMAIL_CLIENT_SECRET,
@@ -171,7 +178,7 @@ class GmailService {
 
       // Configurar nuevo watch
       const response = await this.gmail.users.watch({
-        userId: 'me',
+        userId: this.userEmail,
         requestBody: {
           labelIds: ['INBOX'],
           topicName: topicName,
@@ -179,10 +186,10 @@ class GmailService {
         }
       });
 
-      logger.info('Gmail watch setup successfully:', response.data);
+      logger.info(`Gmail watch setup successfully for ${this.userEmail}:`, response.data);
       return response.data;
     } catch (error) {
-      logger.error('Failed to setup Gmail watch:', error);
+      logger.error(`Failed to setup Gmail watch for ${this.userEmail}:`, error);
       throw error;
     }
   }
