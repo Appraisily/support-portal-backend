@@ -5,16 +5,24 @@ const logger = require('../utils/logger');
 
 exports.handleWebhook = async (req, res, next) => {
   try {
-    const { message } = req.body;
-    const result = await GmailService.handleWebhook(message);
+    const message = req.body.message;
     
-    logger.info('Gmail webhook processed successfully');
-    res.json({
-      success: true,
-      ticketId: result.ticketId,
-      messageId: result.messageId
-    });
+    // Verificar que es una notificación de Gmail
+    if (!message?.data) {
+      logger.warn('Invalid webhook payload received');
+      return res.status(400).json({ error: 'Invalid payload' });
+    }
+
+    // Decodificar el payload
+    const data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+    
+    if (data.emailId) {
+      await GmailService.handleNewEmail(data.emailId);
+    }
+
+    res.status(200).json({ success: true });
   } catch (error) {
+    logger.error('Error handling Gmail webhook:', error);
     next(error);
   }
 };
