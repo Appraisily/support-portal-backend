@@ -8,14 +8,11 @@ const createSequelizeInstance = () => {
 
     const config = {
       dialect: 'postgres', // Ensure dialect is 'postgres'
-      dialectModule: require('pg'),
+      host: socketPath, // Set host to the Unix socket path
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
-      dialectOptions: {
-        socketPath: socketPath
-      },
-      host: null,
+      port: 5432, // Default PostgreSQL port
       define: {
         timestamps: true
       },
@@ -25,7 +22,10 @@ const createSequelizeInstance = () => {
         acquire: 60000,
         idle: 10000
       },
-      logging: (msg) => logger.debug(msg)
+      logging: (msg) => logger.debug(`Sequelize: ${msg}`),
+      retry: {
+        max: 5,
+      },
     };
 
     logger.info('Initializing production PostgreSQL connection with config:', {
@@ -73,7 +73,7 @@ const defineModels = () => {
 
 const connectDB = async () => {
   let retries = 5;
-  const retryDelay = 5000;
+  const retryDelay = 5000; // 5 seconds
 
   while (retries > 0) {
     try {
