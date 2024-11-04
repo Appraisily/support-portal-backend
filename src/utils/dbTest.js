@@ -5,7 +5,8 @@ async function testDatabaseConnection() {
   const {
     DB_NAME,
     DB_USER,
-    DB_PASSWORD
+    DB_PASSWORD,
+    CLOUD_SQL_CONNECTION_NAME
   } = process.env;
 
   logger.info('Starting database connectivity test...');
@@ -15,23 +16,26 @@ async function testDatabaseConnection() {
   const envCheck = {
     DB_NAME: !!DB_NAME,
     DB_USER: !!DB_USER,
-    DB_PASSWORD: !!DB_PASSWORD
+    DB_PASSWORD: !!DB_PASSWORD,
+    CLOUD_SQL_CONNECTION_NAME: !!CLOUD_SQL_CONNECTION_NAME
   };
   logger.info('Environment variables present:', envCheck);
 
   // 2. Test PostgreSQL connection
   logger.info('2. Testing PostgreSQL connection...');
   const client = new Client({
-    host: '34.57.184.164',
-    port: 5432,
+    host: `/cloudsql/${CLOUD_SQL_CONNECTION_NAME}`,
     database: DB_NAME,
     user: DB_USER,
     password: DB_PASSWORD,
-    ssl: false
+    ssl: false,
+    dialectOptions: {
+      socketPath: `/cloudsql/${CLOUD_SQL_CONNECTION_NAME}`
+    }
   });
 
   try {
-    logger.info('Attempting to connect to database...');
+    logger.info('Attempting to connect to database with connection name:', CLOUD_SQL_CONNECTION_NAME);
     await client.connect();
     logger.info('Successfully connected to database');
 
@@ -47,7 +51,8 @@ async function testDatabaseConnection() {
       code: error.code,
       message: error.message,
       detail: error.detail,
-      hint: error.hint
+      hint: error.hint,
+      connectionName: CLOUD_SQL_CONNECTION_NAME
     });
     return false;
   }
