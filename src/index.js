@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
 const { testDatabaseConnection } = require('./utils/dbTest');
+const { seedAdminUser } = require('./utils/seedAdmin');
 
 const app = express();
 
@@ -47,6 +48,11 @@ async function startServer() {
     // Initialize database after secrets are loaded
     const { connectDB } = require('./config/database');
     await connectDB();
+
+    // Seed admin user
+    logger.info('Attempting to seed admin user...');
+    await seedAdminUser();
+    logger.info('Admin user seeding completed');
 
     // Load routes after database is connected
     const routes = require('./routes');
