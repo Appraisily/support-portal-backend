@@ -1,4 +1,4 @@
-const { Sequelize } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const logger = require('../utils/logger');
 
 // Modelos
@@ -41,11 +41,11 @@ if (process.env.NODE_ENV === 'production') {
 
 // Inicializar modelos
 const models = {
-  Ticket: defineTicket(sequelize),
-  Message: defineMessage(sequelize),
-  Attachment: defineAttachment(sequelize),
-  Customer: defineCustomer(sequelize),
-  User: defineUser(sequelize)
+  Ticket: defineTicket(sequelize, DataTypes),
+  Message: defineMessage(sequelize, DataTypes),
+  Attachment: defineAttachment(sequelize, DataTypes),
+  Customer: defineCustomer(sequelize, DataTypes),
+  User: defineUser(sequelize, DataTypes)
 };
 
 // Configurar asociaciones
