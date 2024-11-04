@@ -8,11 +8,17 @@ const createSequelizeInstance = () => {
 
     const config = {
       dialect: 'postgres',
+      host: socketPath,
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
       password: process.env.DB_PASSWORD,
       dialectOptions: {
-        socketPath: socketPath
+        socketPath: socketPath,
+        ssl: false,
+        native: true
+      },
+      define: {
+        timestamps: true
       },
       pool: {
         max: 5,
@@ -36,11 +42,14 @@ const createSequelizeInstance = () => {
 
     return new Sequelize(config);
   } else {
-    logger.info('Running in development mode - using mock storage');
+    logger.info('Running in development mode - using SQLite');
     return new Sequelize({
       dialect: 'sqlite',
       storage: ':memory:',
-      logging: (msg) => logger.debug(msg)
+      logging: (msg) => logger.debug(msg),
+      define: {
+        timestamps: true
+      }
     });
   }
 };
