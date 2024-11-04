@@ -9,6 +9,16 @@ const createSequelizeInstance = () => {
     const dbUser = process.env.DB_USER;
     const dbPassword = process.env.DB_PASSWORD;
 
+    logger.info('Environment Variables:', {
+      NODE_ENV: process.env.NODE_ENV,
+      PORT: process.env.PORT,
+      STORAGE_BUCKET: process.env.STORAGE_BUCKET,
+      CLOUD_SQL_CONNECTION_NAME: connectionName,
+      DB_NAME: dbName,
+      DB_USER: dbUser,
+      // No logs para DB_PASSWORD por seguridad
+    });
+
     if (!connectionName || !dbName || !dbUser || !dbPassword) {
       logger.error('Missing database configuration:', {
         connectionName: !!connectionName,
@@ -28,7 +38,7 @@ const createSequelizeInstance = () => {
       socketPath
     });
 
-    // Verify socket directory and permissions
+    // Verificación de directorio y permisos del socket
     try {
       if (!fs.existsSync('/cloudsql')) {
         logger.info('Creating /cloudsql directory');
@@ -87,79 +97,4 @@ const createSequelizeInstance = () => {
       logging: msg => logger.debug(msg)
     });
   }
-};
-
-const defineModels = () => {
-  logger.info('Initializing database models...');
-  const models = {
-    User: require('../models/user')(sequelize, DataTypes),
-    Ticket: require('../models/ticket')(sequelize, DataTypes),
-    Message: require('../models/message')(sequelize, DataTypes),
-    Customer: require('../models/customer')(sequelize, DataTypes),
-    Purchase: require('../models/purchase')(sequelize, DataTypes),
-    PurchaseItem: require('../models/purchaseItem')(sequelize, DataTypes),
-    Attachment: require('../models/attachment')(sequelize, DataTypes),
-    PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
-  };
-
-  logger.info('Setting up model associations...');
-  Object.values(models).forEach(model => {
-    if (model.associate) {
-      model.associate(models);
-    }
-  });
-
-  logger.info('Models initialized successfully');
-  return models;
-};
-
-const connectDB = async () => {
-  let retries = 5;
-  const retryDelay = 5000;
-
-  while (retries > 0) {
-    try {
-      logger.info('Attempting database connection...');
-      await sequelize.authenticate();
-      logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
-
-      if (process.env.NODE_ENV === 'development') {
-        await sequelize.sync({ alter: true });
-        logger.info('Database models synchronized');
-      }
-      return;
-    } catch (error) {
-      retries--;
-      logger.error('Database connection error:', {
-        message: error.message,
-        code: error.original?.code,
-        errno: error.original?.errno,
-        syscall: error.original?.syscall,
-        address: error.original?.address
-      });
-
-      if (retries === 0) {
-        logger.error('Database connection failed after all retries');
-        process.exit(1);
-      }
-
-      logger.warn(`Database connection attempt failed. Retrying in ${retryDelay}ms... (${retries} attempts remaining)`);
-      await new Promise(resolve => setTimeout(resolve, retryDelay));
-    }
-  }
-};
-
-let sequelize;
-try {
-  logger.info('Initializing database connection...');
-  sequelize = createSequelizeInstance();
-} catch (error) {
-  logger.error('Failed to initialize database:', error);
-  process.exit(1);
-}
-
-module.exports = {
-  sequelize,
-  connectDB,
-  models: defineModels()
 };
