@@ -7,7 +7,7 @@ const createSequelizeInstance = () => {
     logger.info(`Attempting to connect to Cloud SQL using socket path: ${socketPath}`);
 
     const config = {
-      dialect: 'postgres',
+      dialect: 'postgres', // Ensure dialect is 'postgres'
       dialectModule: require('pg'),
       database: process.env.DB_NAME || 'support_portal',
       username: process.env.DB_USER || 'support_portal_user',
