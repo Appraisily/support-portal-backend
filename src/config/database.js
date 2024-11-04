@@ -15,29 +15,20 @@ const createSequelizeInstance = () => {
       socketPath: `/cloudsql/${connectionName}`
     });
 
-    const socketPath = `/cloudsql/${connectionName}`;
-    logger.info(`Checking socket path existence and permissions: ${socketPath}`);
-
     const config = {
       dialect: 'postgres',
       dialectModule: require('pg'),
       database: dbName,
       username: dbUser,
       password: dbPassword,
+      host: '/cloudsql',
       dialectOptions: {
-        // Unix Domain Socket
-        host: socketPath,
+        socketPath: `/cloudsql/${connectionName}`,
         // Required for Cloud SQL
         ssl: false,
         // Additional connection parameters
         keepAlive: true,
-        connectTimeout: 30000,
-        // Retry settings
-        retry: {
-          max: 5,
-          backoffBase: 1000,
-          backoffExponent: 1.5
-        }
+        connectTimeout: 30000
       },
       define: {
         timestamps: true
@@ -46,8 +37,7 @@ const createSequelizeInstance = () => {
         max: 5,
         min: 0,
         acquire: 30000,
-        idle: 10000,
-        handleDisconnects: true
+        idle: 10000
       },
       logging: (msg) => logger.debug(`[Sequelize] ${msg}`)
     };
@@ -56,7 +46,7 @@ const createSequelizeInstance = () => {
       dialect: config.dialect,
       database: config.database,
       username: config.username,
-      host: config.dialectOptions.host,
+      socketPath: config.dialectOptions.socketPath,
       ssl: config.dialectOptions.ssl,
       poolConfig: config.pool
     });
