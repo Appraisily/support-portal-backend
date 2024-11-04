@@ -33,8 +33,10 @@ steps:
       - '8080'
       - '--add-cloudsql-instances'
       - '$PROJECT_ID:us-central1:support-portal-db'
+      - '--service-account'
+      - '856401495068-compute@developer.gserviceaccount.com'
       - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID,CLOUD_SQL_CONNECTION_NAME=$PROJECT_ID:us-central1:support-portal-db,DB_NAME=support_portal,DB_USER=support_portal_user'
+      - 'NODE_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID,CLOUD_SQL_CONNECTION_NAME=$PROJECT_ID:us-central1:support-portal-db,DB_NAME=support_portal,DB_USER=support_portal_user'
       - '--set-secrets'
       - >-
         DB_PASSWORD=DB_PASSWORD:latest,
