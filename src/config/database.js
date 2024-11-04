@@ -40,20 +40,38 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Inicializar modelos
-const models = {
-  Ticket: defineTicket(sequelize, DataTypes),
-  Message: defineMessage(sequelize, DataTypes),
-  Attachment: defineAttachment(sequelize, DataTypes),
-  Customer: defineCustomer(sequelize, DataTypes),
-  User: defineUser(sequelize, DataTypes)
-};
+logger.info('Initializing models...');
+const models = {};
 
-// Configurar asociaciones
-Object.keys(models).forEach(modelName => {
-  if (models[modelName].associate) {
-    models[modelName].associate(models);
-  }
-});
+// Definir modelos uno por uno para mejor control de errores
+try {
+  models.Ticket = defineTicket(sequelize, DataTypes);
+  logger.info('Ticket model initialized');
+  
+  models.Message = defineMessage(sequelize, DataTypes);
+  logger.info('Message model initialized');
+  
+  models.Attachment = defineAttachment(sequelize, DataTypes);
+  logger.info('Attachment model initialized');
+  
+  models.Customer = defineCustomer(sequelize, DataTypes);
+  logger.info('Customer model initialized');
+  
+  models.User = defineUser(sequelize, DataTypes);
+  logger.info('User model initialized');
+
+  // Configurar asociaciones
+  Object.keys(models).forEach(modelName => {
+    if (models[modelName].associate) {
+      models[modelName].associate(models);
+    }
+  });
+  logger.info('Model associations configured');
+
+} catch (error) {
+  logger.error('Error initializing models:', error);
+  throw error;
+}
 
 // Exportar la conexión y los modelos
 module.exports = {

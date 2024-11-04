@@ -20,6 +20,11 @@ class TicketService {
 
       logger.info('Executing findAndCountAll with query:', { query, page, limit });
 
+      if (!models.Ticket) {
+        logger.error('Ticket model not found');
+        throw new Error('Ticket model not found');
+      }
+
       const tickets = await models.Ticket.findAndCountAll({
         where: query,
         include: [
