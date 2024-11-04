@@ -4,20 +4,24 @@ const logger = require('../utils/logger');
 const createSequelizeInstance = () => {
   if (process.env.NODE_ENV === 'production') {
     const socketPath = process.env.CLOUD_SQL_CONNECTION_NAME;
+    const database = process.env.DB_NAME || 'support_portal';
+    const username = process.env.DB_USER || 'support_portal_user';
+    const password = process.env.DB_PASSWORD;
+
     const config = {
-      dialect: 'postgres',
+      dialect: 'postgres', // Ensure dialect is 'postgres'
       host: `/cloudsql/${socketPath}`,
-      database: process.env.DB_NAME || 'support_portal',
-      username: process.env.DB_USER || 'support_portal_user',
-      password: process.env.DB_PASSWORD,
-      // Removed 'dialectOptions' and 'ssl' configuration
+      database: database,
+      username: username,
+      password: password,
+      port: 5432, // Default PostgreSQL port
       pool: {
         max: 5,
         min: 0,
         acquire: 60000,
         idle: 10000,
       },
-      logging: (msg) => logger.debug(msg),
+      logging: (msg) => logger.debug(`Sequelize: ${msg}`),
       retry: {
         max: 5,
       },
@@ -27,6 +31,7 @@ const createSequelizeInstance = () => {
       database: config.database,
       username: config.username,
       host: config.host,
+      port: config.port,
     });
 
     return new Sequelize(config);
@@ -51,7 +56,7 @@ const defineModels = () => {
     Purchase: require('../models/purchase')(sequelize, DataTypes),
     PurchaseItem: require('../models/purchaseItem')(sequelize, DataTypes),
     Attachment: require('../models/attachment')(sequelize, DataTypes),
-    PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
+    PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes),
   };
 
   Object.values(models).forEach(model => {
@@ -65,7 +70,7 @@ const defineModels = () => {
 
 const connectDB = async () => {
   let retries = 5;
-  const retryDelay = 5000;
+  const retryDelay = 5000; // 5 seconds
 
   while (retries > 0) {
     try {
@@ -92,5 +97,5 @@ const connectDB = async () => {
 module.exports = {
   sequelize,
   connectDB,
-  models: defineModels()
+  models: defineModels(),
 };
