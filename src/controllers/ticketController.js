@@ -6,6 +6,8 @@ exports.listTickets = async (req, res, next) => {
     const { status, page = 1, limit = 10 } = req.query;
     const query = status ? { status } : {};
 
+    logger.info('Listing tickets with query:', { query, page, limit });
+
     const result = await TicketService.listTickets(query, {
       page,
       limit
@@ -31,6 +33,8 @@ exports.listTickets = async (req, res, next) => {
         author: message.author
       }))
     }));
+
+    logger.info('Successfully mapped tickets:', { count: tickets.length });
 
     res.json(tickets);
   } catch (error) {

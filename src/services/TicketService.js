@@ -18,6 +18,8 @@ class TicketService {
       if (status) query.status = status;
       if (priority) query.priority = priority;
 
+      logger.info('Executing findAndCountAll with query:', { query, page, limit });
+
       const tickets = await models.Ticket.findAndCountAll({
         where: query,
         include: [
@@ -34,6 +36,11 @@ class TicketService {
         order: [[sort, order]],
         limit: parseInt(limit),
         offset: (page - 1) * limit
+      });
+
+      logger.info('Query executed successfully:', { 
+        count: tickets.count,
+        rowCount: tickets.rows.length 
       });
 
       return {
