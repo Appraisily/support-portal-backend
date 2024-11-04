@@ -31,13 +31,10 @@ steps:
       - '10'
       - '--port'
       - '8080'
-      - '--add-cloudsql-instances'
-      - '$PROJECT_ID:us-central1:support-portal-db'
       - '--set-env-vars'
       - 'NODE_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID'
       - '--set-secrets'
       - >-
-        CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,
         DB_NAME=DB_NAME:latest,
         DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
