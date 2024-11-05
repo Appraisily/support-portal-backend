@@ -25,7 +25,7 @@ exports.validateTicketCreate = [
 exports.validateTicketUpdate = [
   body('status')
     .optional()
-    .isIn(['open', 'solved', 'pending'])
+    .isIn(['open', 'hold', 'closed'])
     .withMessage('Invalid status'),
   
   body('priority')
