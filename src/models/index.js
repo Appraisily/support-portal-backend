@@ -23,6 +23,7 @@ async function initializeModels() {
 
   // Definir modelos
   models = {
+    User: require('./user')(sequelize, DataTypes),
     Customer: require('./customer')(sequelize, DataTypes),
     Ticket: require('./ticket')(sequelize, DataTypes),
     Message: require('./message')(sequelize, DataTypes),
@@ -41,7 +42,13 @@ async function initializeModels() {
   // Configurar asociaciones
   Object.keys(models).forEach(modelName => {
     if (models[modelName].associate) {
-      models[modelName].associate(models);
+      try {
+        models[modelName].associate(models);
+        logger.info(`Associations configured for ${modelName}`);
+      } catch (error) {
+        logger.error(`Failed to configure associations for ${modelName}:`, error);
+        throw error;
+      }
     }
   });
 
