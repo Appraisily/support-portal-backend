@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
+const { getModels } = require('../models');
 
 class GmailService {
   constructor() {
@@ -9,6 +10,7 @@ class GmailService {
 
     this.userEmail = process.env.GMAIL_USER_EMAIL;
     logger.info(`Initializing Gmail service for: ${this.userEmail}`);
+    this.lastHistoryId = null;
   }
 
   async setupGmail() {
@@ -335,23 +337,28 @@ class GmailService {
         for (const message of history.messagesAdded || []) {
           const messageId = message.message.id;
           
-          // Obtener detalles del mensaje
-          const messageDetails = await this.gmail.users.messages.get({
-            userId: this.userEmail,
-            id: messageId,
-            format: 'full'
-          });
+          // Verificar si ya procesamos este mensaje
+          if (await this.isMessageProcessed(messageId)) {
+            logger.info('Skipping already processed message:', messageId);
+            continue;
+          }
 
-          logger.info('New email received:', {
-            id: messageId,
-            subject: this.getHeader(messageDetails.data.payload.headers, 'Subject'),
-            from: this.getHeader(messageDetails.data.payload.headers, 'From')
-          });
-
-          // Aquí puedes añadir la lógica para procesar el email
-          // Por ejemplo, crear un ticket, etc.
+          try {
+            // Procesar el mensaje y crear ticket
+            await this.handleNewEmail(messageId);
+            // Si se procesa correctamente, marcarlo como procesado
+            await this.markMessageAsProcessed(messageId);
+          } catch (error) {
+            logger.error('Error processing message:', {
+              messageId,
+              error: error.message
+            });
+          }
         }
       }
+
+      // Actualizar el último historyId procesado
+      await this.updateLastHistoryId(historyId);
 
     } catch (error) {
       logger.error('Error processing new emails:', error);
@@ -359,9 +366,52 @@ class GmailService {
     }
   }
 
-  getHeader(headers, name) {
-    const header = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
-    return header ? header.value : null;
+  async isMessageProcessed(messageId) {
+    try {
+      const models = await getModels();
+      // Buscar un ticket con este messageId
+      const ticket = await models.Ticket.findOne({
+        where: {
+          gmailMessageId: messageId
+        }
+      });
+      return !!ticket; // Retorna true si existe un ticket
+    } catch (error) {
+      logger.error('Error checking processed message:', error);
+      return false; // En caso de error, procesamos el mensaje por seguridad
+    }
+  }
+
+  async markMessageAsProcessed(messageId) {
+    // No necesitamos hacer nada aquí porque el ticket ya se creó
+    // en handleNewEmail con el messageId
+    logger.info('Message marked as processed:', messageId);
+  }
+
+  async getLastHistoryId() {
+    try {
+      const models = await getModels();
+      const setting = await models.Setting.findOne({
+        where: { key: 'lastGmailHistoryId' }
+      });
+      return setting ? parseInt(setting.value) : null;
+    } catch (error) {
+      logger.error('Error getting last history ID:', error);
+      return null;
+    }
+  }
+
+  async updateLastHistoryId(historyId) {
+    try {
+      const models = await getModels();
+      await models.Setting.upsert({
+        key: 'lastGmailHistoryId',
+        value: historyId.toString()
+      });
+      logger.info('Updated last history ID:', historyId);
+    } catch (error) {
+      logger.error('Error updating last history ID:', error);
+    }
   }
 }
 

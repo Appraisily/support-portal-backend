@@ -6,14 +6,14 @@ const GmailService = require('../services/GmailService');
 // Webhook para notificaciones de Gmail
 router.post('/webhook', async (req, res) => {
   try {
-    logger.info('Received Gmail notification:', {
-      body: req.body,
-      headers: req.headers
-    });
+    logger.info('Received Gmail notification');
 
-    // Verificar que el mensaje viene de Google
-    if (!req.headers['x-goog-resource-state']) {
-      logger.warn('Invalid webhook request - missing Google headers');
+    // Verificar que el mensaje viene de Google (por la IP y otros headers)
+    const googleIPs = ['66.249.93.', '142.250.', '35.191.']; // IPs de Google
+    const clientIP = req.headers['x-forwarded-for'] || req.ip;
+    
+    if (!googleIPs.some(ip => clientIP.startsWith(ip))) {
+      logger.warn('Invalid webhook request - unexpected IP:', clientIP);
       return res.status(400).json({ error: 'Invalid request' });
     }
 
@@ -26,9 +26,17 @@ router.post('/webhook', async (req, res) => {
       
       logger.info('Processed Gmail notification:', notification);
 
-      // Aquí puedes añadir la lógica para procesar los emails
-      // Por ejemplo:
-      await GmailService.processNewEmails(notification);
+      // Solo procesar si el historyId es mayor que el último procesado
+      const lastHistoryId = await GmailService.getLastHistoryId();
+      if (!lastHistoryId || notification.historyId > lastHistoryId) {
+        await GmailService.processNewEmails(notification);
+        await GmailService.updateLastHistoryId(notification.historyId);
+      } else {
+        logger.info('Skipping notification - already processed:', {
+          current: notification.historyId,
+          last: lastHistoryId
+        });
+      }
     }
 
     // Responder a Google
