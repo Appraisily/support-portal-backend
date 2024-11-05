@@ -17,9 +17,10 @@ const REQUIRED_SECRETS = {
   ADMIN_PASSWORD: 'admin-password',
 
   // Credenciales de Gmail para la integración
-  GMAIL_CLIENT_ID: 'gmail-client-id',
-  GMAIL_CLIENT_SECRET: 'gmail-client-secret',
-  GMAIL_REFRESH_TOKEN: 'gmail-refresh-token',
+  GMAIL_CLIENT_ID: 'GMAIL_CLIENT_ID',
+  GMAIL_CLIENT_SECRET: 'GMAIL_CLIENT_SECRET',
+  GMAIL_REFRESH_TOKEN: 'GMAIL_REFRESH_TOKEN',
+  GMAIL_USER_EMAIL: 'GMAIL_USER_EMAIL',
   
   // Otros secretos
   JWT_SECRET: 'jwt-secret'
@@ -34,6 +35,7 @@ async function loadSecrets() {
     }
 
     logger.info(`Loading secrets for project: ${projectId}`);
+    const loadedSecrets = new Set();
 
     for (const [envVar, secretName] of Object.entries(REQUIRED_SECRETS)) {
       logger.info(`Accessing secret: ${secretName}`);
@@ -45,6 +47,7 @@ async function loadSecrets() {
 
         const secretValue = version.payload.data.toString();
         process.env[envVar] = secretValue;
+        loadedSecrets.add(envVar);
 
         logger.info(`Secret ${secretName} retrieved successfully`);
         logger.info(`Loaded secret: ${secretName}`);
@@ -55,6 +58,16 @@ async function loadSecrets() {
         }
         throw error;
       }
+    }
+
+    // Verificar que todas las credenciales de Gmail se cargaron
+    const requiredGmailVars = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_REFRESH_TOKEN', 'GMAIL_USER_EMAIL'];
+    const missingGmailVars = requiredGmailVars.filter(varName => !loadedSecrets.has(varName));
+    
+    if (missingGmailVars.length > 0) {
+      logger.error(`Missing required Gmail secrets: ${missingGmailVars.join(', ')}`);
+    } else {
+      logger.info('All Gmail secrets loaded successfully');
     }
 
     logger.info('All required secrets loaded successfully');

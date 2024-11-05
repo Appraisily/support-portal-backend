@@ -4,27 +4,48 @@ const { getModels } = require('../models');
 
 class GmailService {
   constructor() {
-    if (!process.env.GMAIL_USER_EMAIL) {
-      throw new Error('GMAIL_USER_EMAIL environment variable is not set');
-    }
-
     this.userEmail = process.env.GMAIL_USER_EMAIL;
     this.gmail = null;
-    logger.info(`Initializing Gmail service for: ${this.userEmail}`);
-    this.lastHistoryId = null;
+    this.initialized = false;
+    logger.info(`Creating Gmail service instance for: ${this.userEmail || 'undefined'}`);
   }
 
   async setupGmail() {
     try {
+      if (this.initialized) {
+        logger.info('Gmail service already initialized');
+        return;
+      }
+
       logger.info('Setting up Gmail with OAuth2...');
       
       // Verificar credenciales
-      const requiredVars = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_REFRESH_TOKEN'];
-      const missingVars = requiredVars.filter(varName => !process.env[varName]);
+      const requiredVars = [
+        'GMAIL_CLIENT_ID', 
+        'GMAIL_CLIENT_SECRET', 
+        'GMAIL_REFRESH_TOKEN',
+        'GMAIL_USER_EMAIL'
+      ];
+      
+      const missingVars = requiredVars.filter(varName => {
+        const value = process.env[varName];
+        if (!value) {
+          logger.error(`Missing ${varName} environment variable`);
+          return true;
+        }
+        return false;
+      });
       
       if (missingVars.length > 0) {
-        throw new Error(`Missing required Gmail variables: ${missingVars.join(', ')}`);
+        const error = new Error(`Missing required Gmail variables: ${missingVars.join(', ')}`);
+        logger.error('Gmail setup failed:', {
+          error: error.message,
+          missingVars
+        });
+        throw error;
       }
+
+      this.userEmail = process.env.GMAIL_USER_EMAIL;
 
       // Configurar OAuth2
       this.oauth2Client = new google.auth.OAuth2(
@@ -49,15 +70,20 @@ class GmailService {
         userId: this.userEmail
       });
 
+      this.initialized = true;
       logger.info('Gmail setup successful, acting as:', userInfo.data);
       return userInfo.data;
 
     } catch (error) {
+      this.initialized = false;
+      this.gmail = null;
+      
       logger.error('Failed to setup Gmail:', {
         error: error.message,
         stack: error.stack,
         response: error.response?.data
       });
+      
       throw error;
     }
   }
