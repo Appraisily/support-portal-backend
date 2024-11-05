@@ -20,8 +20,7 @@ const REQUIRED_SECRETS = {
   GMAIL_CLIENT_ID: 'GMAIL_CLIENT_ID',
   GMAIL_CLIENT_SECRET: 'GMAIL_CLIENT_SECRET',
   GMAIL_REFRESH_TOKEN: 'GMAIL_REFRESH_TOKEN',
-  GMAIL_USER_EMAIL: 'GMAIL_USER_EMAIL',
-  
+
   // Otros secretos
   JWT_SECRET: 'jwt-secret'
 };
@@ -61,7 +60,7 @@ async function loadSecrets() {
     }
 
     // Verificar que todas las credenciales de Gmail se cargaron
-    const requiredGmailVars = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_REFRESH_TOKEN', 'GMAIL_USER_EMAIL'];
+    const requiredGmailVars = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_REFRESH_TOKEN'];
     const missingGmailVars = requiredGmailVars.filter(varName => !loadedSecrets.has(varName));
     
     if (missingGmailVars.length > 0) {

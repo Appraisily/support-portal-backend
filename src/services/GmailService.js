@@ -4,10 +4,10 @@ const { getModels } = require('../models');
 
 class GmailService {
   constructor() {
-    this.userEmail = process.env.GMAIL_USER_EMAIL;
+    this.userEmail = 'info@appraisily.com';
     this.gmail = null;
     this.initialized = false;
-    logger.info(`Creating Gmail service instance for: ${this.userEmail || 'undefined'}`);
+    logger.info(`Creating Gmail service instance for: ${this.userEmail}`);
   }
 
   async setupGmail() {
@@ -19,12 +19,11 @@ class GmailService {
 
       logger.info('Setting up Gmail with OAuth2...');
       
-      // Verificar credenciales
+      // Solo verificar las credenciales de OAuth2
       const requiredVars = [
         'GMAIL_CLIENT_ID', 
         'GMAIL_CLIENT_SECRET', 
-        'GMAIL_REFRESH_TOKEN',
-        'GMAIL_USER_EMAIL'
+        'GMAIL_REFRESH_TOKEN'
       ];
       
       const missingVars = requiredVars.filter(varName => {
@@ -44,8 +43,6 @@ class GmailService {
         });
         throw error;
       }
-
-      this.userEmail = process.env.GMAIL_USER_EMAIL;
 
       // Configurar OAuth2
       this.oauth2Client = new google.auth.OAuth2(

@@ -10,6 +10,8 @@ const defineUser = require('../models/user');
 
 let sequelize;
 let models = {};
+let initialized = false;
+let initializationPromise = null;
 
 // Configuración para Cloud SQL en producción
 if (process.env.NODE_ENV === 'production') {
@@ -39,8 +41,6 @@ if (process.env.NODE_ENV === 'production') {
     }
   );
 }
-
-let initializationPromise = null;
 
 const getModels = async () => {
   if (!initializationPromise) {
