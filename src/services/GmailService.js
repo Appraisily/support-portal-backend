@@ -11,30 +11,88 @@ class GmailService {
     this.userEmail = process.env.GMAIL_USER_EMAIL;
     logger.info(`Initializing Gmail service for: ${this.userEmail}`);
 
-    // Inicializar autenticación según el entorno
-    if (process.env.NODE_ENV === 'production') {
-      logger.info('Initializing Gmail service in production mode');
-      this.auth = new google.auth.GoogleAuth({
-        scopes: [
-          'https://www.googleapis.com/auth/gmail.modify',
-          'https://www.googleapis.com/auth/pubsub',
-          'https://www.googleapis.com/auth/gmail.settings.basic'
-        ]
-      });
-    } else {
-      this.oauth2Client = new google.auth.OAuth2(
-        process.env.GMAIL_CLIENT_ID,
-        process.env.GMAIL_CLIENT_SECRET,
-        'https://developers.google.com/oauthplayground'
-      );
-      this.mockMode = true;
-    }
+    // Siempre usar OAuth2
+    this.oauth2Client = new google.auth.OAuth2(
+      process.env.GMAIL_CLIENT_ID,
+      process.env.GMAIL_CLIENT_SECRET,
+      'https://developers.google.com/oauthplayground'
+    );
+  }
 
-    // Iniciar el intervalo de renovación en producción
-    if (process.env.NODE_ENV === 'production') {
-      // Renovar cada 5 días (el watch expira cada 7 días)
-      const FIVE_DAYS = 5 * 24 * 60 * 60 * 1000;
-      setInterval(() => this.renewWatch(), FIVE_DAYS);
+  async setupGmail() {
+    try {
+      logger.info('Setting up Gmail with OAuth2...');
+      
+      // Usar el refresh token guardado
+      this.oauth2Client.setCredentials({
+        refresh_token: process.env.GMAIL_REFRESH_TOKEN
+      });
+
+      this.gmail = google.gmail({
+        version: 'v1',
+        auth: this.oauth2Client
+      });
+
+      // Verificar que funciona
+      const userInfo = await this.gmail.users.getProfile({
+        userId: this.userEmail
+      });
+      logger.info('Gmail setup successful, acting as:', userInfo.data);
+
+    } catch (error) {
+      logger.error('Failed to setup Gmail:', error);
+      throw error;
+    }
+  }
+
+  async setupGmailWatch() {
+    try {
+      logger.info('Setting up Gmail watch...');
+      
+      // Asegurarse de que Gmail está inicializado
+      if (!this.gmail) {
+        await this.setupGmail();
+      }
+
+      // Verificar permisos de Pub/Sub
+      const pubsub = new PubSub();
+      const [topics] = await pubsub.getTopics();
+      logger.info('Available Pub/Sub topics:', topics.map(t => t.name));
+
+      const topicName = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`;
+      logger.info(`Using Pub/Sub topic: ${topicName}`);
+
+      // Detener watch existente si hay uno
+      try {
+        await this.gmail.users.stop({
+          userId: this.userEmail
+        });
+        logger.info('Stopped existing Gmail watch');
+      } catch (error) {
+        logger.warn('No existing watch to stop or error stopping watch:', error.message);
+      }
+
+      // Configurar nuevo watch
+      const response = await this.gmail.users.watch({
+        userId: this.userEmail,
+        requestBody: {
+          labelIds: ['INBOX'],
+          topicName: topicName,
+          labelFilterAction: 'include'
+        }
+      });
+
+      logger.info('Gmail watch setup response:', response.data);
+      return response.data;
+
+    } catch (error) {
+      logger.error('Failed to setup Gmail watch:', {
+        error: error.message,
+        stack: error.stack,
+        code: error.code,
+        details: error.response?.data
+      });
+      throw error;
     }
   }
 
@@ -45,30 +103,6 @@ class GmailService {
       logger.info('Gmail watch renewed successfully');
     } catch (error) {
       logger.error('Failed to renew Gmail watch:', error);
-    }
-  }
-
-  async setupGmail() {
-    try {
-      if (process.env.NODE_ENV === 'production') {
-        const client = await this.auth.getClient();
-        this.gmail = google.gmail({
-          version: 'v1',
-          auth: client
-        });
-      } else {
-        this.oauth2Client.setCredentials({
-          refresh_token: process.env.GMAIL_REFRESH_TOKEN
-        });
-        this.gmail = google.gmail({
-          version: 'v1',
-          auth: this.oauth2Client
-        });
-      }
-      logger.info('Gmail service initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize Gmail service:', error);
-      throw error;
     }
   }
 
@@ -200,23 +234,18 @@ class GmailService {
         const client = await this.auth.getClient();
         logger.info('Auth client obtained successfully');
 
-        // Obtener información del usuario
+        // Obtener información del usuario usando el email específico
         const userInfo = await this.gmail.users.getProfile({
-          userId: 'me'
+          userId: this.userEmail // Usar el email en lugar de 'me'
         });
         logger.info('Gmail user profile:', userInfo.data);
-
-        // Verificar permisos de Pub/Sub
-        const pubsub = new PubSub();
-        const [topics] = await pubsub.getTopics();
-        logger.info('Available Pub/Sub topics:', topics.map(t => t.name));
 
         const topicName = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`;
         logger.info(`Using Pub/Sub topic: ${topicName}`);
 
-        // Configurar watch
+        // Configurar watch usando el email específico
         const response = await this.gmail.users.watch({
-          userId: this.userEmail,
+          userId: this.userEmail, // Usar el email en lugar de 'me'
           requestBody: {
             labelIds: ['INBOX'],
             topicName: topicName,
@@ -286,7 +315,8 @@ class GmailService {
       logger.error('Gmail watch setup failed:', {
         error: error.message,
         stack: error.stack,
-        code: error.code
+        code: error.code,
+        details: error.response?.data
       });
       throw error;
     }
