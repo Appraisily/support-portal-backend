@@ -1,71 +1,52 @@
 const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 const logger = require('./logger');
 
-class SecretManager {
-  constructor() {
-    this.client = new SecretManagerServiceClient();
-    this.projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
-    this.secrets = new Map();
-  }
+const client = new SecretManagerServiceClient();
 
-  async getSecret(secretName) {
-    try {
-      const name = `projects/${this.projectId}/secrets/${secretName}/versions/latest`;
+// Lista de secretos requeridos
+const REQUIRED_SECRETS = {
+  // Credenciales de base de datos para Cloud SQL
+  DB_NAME: 'db-name',
+  DB_USER: 'db-user',
+  DB_PASSWORD: 'db-password',
+  CLOUD_SQL_CONNECTION_NAME: 'cloud-sql-connection',
+
+  // Credenciales de administrador para el frontend
+  ADMIN_EMAIL: 'admin-email',
+  ADMIN_PASSWORD: 'admin-password',
+
+  // Credenciales de Gmail para la integración
+  GMAIL_CLIENT_ID: 'gmail-client-id',
+  GMAIL_CLIENT_SECRET: 'gmail-client-secret',
+  GMAIL_REFRESH_TOKEN: 'gmail-refresh-token',
+  
+  // Otros secretos
+  JWT_SECRET: 'jwt-secret'
+};
+
+async function loadSecrets() {
+  try {
+    for (const [envVar, secretName] of Object.entries(REQUIRED_SECRETS)) {
       logger.info(`Accessing secret: ${secretName}`);
       
-      const [version] = await this.client.accessSecretVersion({ name });
-      const secret = version.payload.data.toString().trim();
-      
+      const [version] = await client.accessSecretVersion({
+        name: `projects/${process.env.PROJECT_ID}/secrets/${secretName}/versions/latest`,
+      });
+
+      const secretValue = version.payload.data.toString();
+      process.env[envVar] = secretValue;
+
       logger.info(`Secret ${secretName} retrieved successfully`);
-      return secret;
-    } catch (error) {
-      logger.error(`Error accessing secret ${secretName}:`, error);
-      throw error;
-    }
-  }
-
-  async loadSecrets() {
-    if (!this.projectId) {
-      throw new Error('GOOGLE_CLOUD_PROJECT_ID environment variable is not set');
+      logger.info(`Loaded secret: ${secretName}`);
     }
 
-    logger.info('Loading secrets for project:', this.projectId);
-
-    const requiredSecrets = [
-      // Secretos para la base de datos
-      'CLOUD_SQL_CONNECTION_NAME',
-      'DB_NAME',
-      'DB_USER',
-      'DB_PASSWORD',
-      
-      // Secretos para Gmail (si los necesitas)
-      'GMAIL_CLIENT_ID',
-      'GMAIL_CLIENT_SECRET',
-      'GMAIL_REFRESH_TOKEN',
-      
-      // Secretos para JWT y autenticación
-      'jwt-secret',
-      
-      // Credenciales de admin para el frontend
-      'ADMIN_EMAIL',
-      'ADMIN_PASSWORD'
-    ];
-
-    try {
-      for (const secretName of requiredSecrets) {
-        const value = await this.getSecret(secretName);
-        // Para jwt-secret, convertir a JWT_SECRET en env
-        const envName = secretName === 'jwt-secret' ? 'JWT_SECRET' : secretName;
-        process.env[envName] = value;
-        logger.info(`Loaded secret: ${secretName}`);
-      }
-
-      logger.info('All required secrets loaded successfully');
-    } catch (error) {
-      logger.error('Failed to load secrets:', error);
-      throw error;
-    }
+    logger.info('All required secrets loaded successfully');
+  } catch (error) {
+    logger.error('Error loading secrets:', error);
+    throw error;
   }
 }
 
-module.exports = new SecretManager();
+module.exports = {
+  loadSecrets
+};

@@ -7,18 +7,36 @@ let models = null;
 async function initializeModels() {
   if (models) return models;
 
+  // Credenciales de base de datos (DB_*)
+  // Estas son las credenciales para conectarse a Cloud SQL
+  // No confundir con ADMIN_EMAIL y ADMIN_PASSWORD que son para el login del frontend
   if (process.env.NODE_ENV === 'production') {
-    sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, process.env.DB_PASS, {
-      host: process.env.DB_HOST,
-      dialect: 'mysql',
-      logging: (msg) => logger.debug(msg)
+    sequelize = new Sequelize(
+      process.env.DB_NAME,
+      process.env.DB_USER,
+      process.env.DB_PASSWORD,  // Cambiado de DB_PASS a DB_PASSWORD para mantener consistencia
+      {
+        dialect: 'postgres',
+        host: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME,
+        logging: (msg) => logger.debug(msg),
+        dialectOptions: {
+          socketPath: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME
+        }
+      }
+    );
+    logger.info('Connecting to Cloud SQL with credentials:', {
+      dbName: process.env.DB_NAME,
+      dbUser: process.env.DB_USER,
+      connectionName: process.env.CLOUD_SQL_CONNECTION_NAME
     });
   } else {
+    // Configuración para desarrollo local
     sequelize = new Sequelize({
       dialect: 'sqlite',
       storage: ':memory:',
       logging: false
     });
+    logger.info('Using SQLite for local development');
   }
 
   // Definir modelos
