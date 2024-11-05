@@ -3,7 +3,33 @@ const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
 
 class TicketService {
+  constructor() {
+    this.initialized = false;
+    this.initPromise = null;
+  }
+
+  async initialize() {
+    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
+      try {
+        logger.info('Inicializando TicketService...');
+        // Esperar a que los modelos estén disponibles
+        await getModels();
+        this.initialized = true;
+        logger.info('TicketService inicializado correctamente');
+      } catch (error) {
+        logger.error('Error inicializando TicketService:', error);
+        throw error;
+      }
+    })();
+
+    return this.initPromise;
+  }
+
   async listTickets(filters = {}, pagination = {}) {
+    await this.initialize();
     try {
       const { 
         status, 
@@ -64,6 +90,7 @@ class TicketService {
   }
 
   async getTicketById(id) {
+    await this.initialize();
     const models = await getModels();
     const ticket = await models.Ticket.findByPk(id, {
       include: [
@@ -86,6 +113,7 @@ class TicketService {
   }
 
   async createTicket(ticketData) {
+    await this.initialize();
     try {
       const models = await getModels();
       const ticket = await models.Ticket.create(ticketData);
@@ -98,6 +126,7 @@ class TicketService {
   }
 
   async updateTicket(id, updates) {
+    await this.initialize();
     const models = await getModels();
     const ticket = await models.Ticket.findByPk(id);
 
@@ -112,6 +141,7 @@ class TicketService {
   }
 
   async addMessage(ticketId, messageData) {
+    await this.initialize();
     const models = await getModels();
     const ticket = await this.getTicketById(ticketId);
     const message = await models.Message.create({
