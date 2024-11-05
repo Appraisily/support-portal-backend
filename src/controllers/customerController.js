@@ -1,9 +1,10 @@
-const { models } = require('../config/database');
+const { getModels } = require('../models');
 const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
 
 exports.getCustomer = async (req, res, next) => {
   try {
+    const models = await getModels();
     const customer = await models.Customer.findByPk(req.params.customerId);
     
     if (!customer) {
@@ -28,29 +29,12 @@ exports.getCustomer = async (req, res, next) => {
 exports.getCustomerPurchases = async (req, res, next) => {
   try {
     const { customerId } = req.params;
+    const models = await getModels();
     
-    // Por ahora, devolvemos un array vacío ya que no tenemos el modelo Purchase
+    // Por ahora, devolvemos un array vacío
     res.json({
       purchases: []
     });
-    
-    // TODO: Implementar cuando tengamos el modelo Purchase
-    /*
-    const purchases = await models.Purchase.findAll({
-      where: { customerId },
-      order: [['date', 'DESC']]
-    });
-
-    res.json({
-      purchases: purchases.map(purchase => ({
-        id: purchase.id,
-        date: purchase.date.toISOString(),
-        amount: purchase.amount,
-        status: purchase.status,
-        items: purchase.items
-      }))
-    });
-    */
   } catch (error) {
     logger.error('Error getting customer purchases:', error);
     next(error);

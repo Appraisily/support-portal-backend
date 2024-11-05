@@ -1,4 +1,4 @@
-const { Sequelize } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const logger = require('../utils/logger');
 
 let sequelize;
@@ -10,7 +10,6 @@ if (process.env.NODE_ENV === 'production') {
     logging: (msg) => logger.debug(msg)
   });
 } else {
-  // Configuración para desarrollo/testing
   sequelize = new Sequelize({
     dialect: 'sqlite',
     storage: ':memory:',
@@ -18,21 +17,22 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Definir modelos
 const models = {
-  Customer: require('./customer')(sequelize),
-  Ticket: require('./ticket')(sequelize),
-  Message: require('./message')(sequelize),
-  Setting: require('./setting')(sequelize)
+  Customer: require('./customer')(sequelize, DataTypes),
+  Ticket: require('./ticket')(sequelize, DataTypes),
+  Message: require('./message')(sequelize, DataTypes),
+  Setting: require('./setting')(sequelize, DataTypes)
 };
 
-// Configurar relaciones
+// Configurar asociaciones
 Object.keys(models).forEach(modelName => {
   if (models[modelName].associate) {
     models[modelName].associate(models);
   }
 });
 
-// Función para obtener los modelos (asegura que la conexión está lista)
+// Función para obtener los modelos
 async function getModels() {
   if (!sequelize) {
     throw new Error('Database not initialized');
