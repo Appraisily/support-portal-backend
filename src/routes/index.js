@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate } = require('../middleware/auth');
+
+// Importar rutas
 const ticketRoutes = require('./ticketRoutes');
 const messageRoutes = require('./messageRoutes');
 const attachmentRoutes = require('./attachmentRoutes');
@@ -12,12 +14,15 @@ const customerRoutes = require('./customerRoutes');
 const predefinedReplyRoutes = require('./predefinedReplyRoutes');
 const analysisRoutes = require('./analysisRoutes');
 
+// Rutas públicas
 router.use('/auth', authRoutes);
+
+// Rutas protegidas
 router.use('/tickets', authenticate, ticketRoutes);
 router.use('/messages', authenticate, messageRoutes);
 router.use('/attachments', authenticate, attachmentRoutes);
 router.use('/users', authenticate, userRoutes);
-router.use('/gmail', authenticate, gmailRoutes);
+router.use('/gmail', gmailRoutes); // No autenticar el webhook
 router.use('/analytics', authenticate, analyticsRoutes);
 router.use('/customers', authenticate, customerRoutes);
 router.use('/predefined-replies', authenticate, predefinedReplyRoutes);
