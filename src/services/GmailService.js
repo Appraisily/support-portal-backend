@@ -10,13 +10,6 @@ class GmailService {
 
     this.userEmail = process.env.GMAIL_USER_EMAIL;
     logger.info(`Initializing Gmail service for: ${this.userEmail}`);
-
-    // Siempre usar OAuth2
-    this.oauth2Client = new google.auth.OAuth2(
-      process.env.GMAIL_CLIENT_ID,
-      process.env.GMAIL_CLIENT_SECRET,
-      'https://developers.google.com/oauthplayground'
-    );
   }
 
   async setupGmail() {
@@ -31,18 +24,28 @@ class GmailService {
         throw new Error(`Missing required Gmail variables: ${missingVars.join(', ')}`);
       }
 
-      logger.info('Gmail credentials found:', {
-        clientId: `${process.env.GMAIL_CLIENT_ID.substring(0, 5)}...`,
-        hasClientSecret: !!process.env.GMAIL_CLIENT_SECRET,
-        hasRefreshToken: !!process.env.GMAIL_REFRESH_TOKEN,
+      // Log de las credenciales (sin mostrar valores completos)
+      logger.info('Gmail credentials:', {
+        clientId: `${process.env.GMAIL_CLIENT_ID.substring(0, 8)}...`,
+        clientSecret: process.env.GMAIL_CLIENT_SECRET ? '(set)' : '(not set)',
+        refreshToken: process.env.GMAIL_REFRESH_TOKEN ? '(set)' : '(not set)',
         userEmail: process.env.GMAIL_USER_EMAIL
       });
-      
-      // Configurar OAuth2
+
+      // Crear nuevo cliente OAuth2
+      this.oauth2Client = new google.auth.OAuth2(
+        process.env.GMAIL_CLIENT_ID,
+        process.env.GMAIL_CLIENT_SECRET,
+        'https://developers.google.com/oauthplayground'
+      );
+
+      // Configurar credenciales
       this.oauth2Client.setCredentials({
-        refresh_token: process.env.GMAIL_REFRESH_TOKEN
+        refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+        token_type: 'Bearer'
       });
 
+      // Crear cliente Gmail
       this.gmail = google.gmail({
         version: 'v1',
         auth: this.oauth2Client
@@ -52,13 +55,22 @@ class GmailService {
       const userInfo = await this.gmail.users.getProfile({
         userId: this.userEmail
       });
+
       logger.info('Gmail setup successful, acting as:', userInfo.data);
+      return userInfo.data;
 
     } catch (error) {
+      // Log detallado del error
       logger.error('Failed to setup Gmail:', {
         error: error.message,
         stack: error.stack,
-        details: error.response?.data
+        response: error.response?.data,
+        config: {
+          clientId: process.env.GMAIL_CLIENT_ID ? 'present' : 'missing',
+          clientSecret: process.env.GMAIL_CLIENT_SECRET ? 'present' : 'missing',
+          refreshToken: process.env.GMAIL_REFRESH_TOKEN ? 'present' : 'missing',
+          userEmail: process.env.GMAIL_USER_EMAIL
+        }
       });
       throw error;
     }
