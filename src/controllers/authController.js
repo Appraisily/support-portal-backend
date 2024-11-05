@@ -7,10 +7,11 @@ exports.login = async (req, res, next) => {
     const { email, password } = req.body;
     logger.info('Login attempt:', { email });
 
-    // Verificar contra las credenciales de Secret Manager
+    // IMPORTANTE: Estas credenciales vienen de Secret Manager y son para el frontend
+    // No confundir con las credenciales de DB_USER y DB_PASSWORD que son para la base de datos
     if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
       logger.warn('Login failed: Invalid credentials');
-      throw new ApiError(401, 'Invalid email or password');
+      throw new ApiError(401, 'Credenciales inválidas');
     }
 
     const token = jwt.sign(

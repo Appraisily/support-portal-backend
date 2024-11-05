@@ -12,9 +12,9 @@ const REQUIRED_SECRETS = {
   DB_HOST: 'DB_HOST',
   DB_PORT: 'DB_PORT',
 
-  // Credenciales de administrador para el frontend
-  ADMIN_EMAIL: 'admin-email',
-  ADMIN_PASSWORD: 'admin-password',
+  // Credenciales de administrador para el panel de control web
+  ADMIN_EMAIL: 'ADMIN_EMAIL',
+  ADMIN_PASSWORD: 'ADMIN_PASSWORD',
 
   // Credenciales de Gmail para la integración
   GMAIL_CLIENT_ID: 'GMAIL_CLIENT_ID',
