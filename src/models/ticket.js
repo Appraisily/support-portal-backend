@@ -10,7 +10,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     status: {
-      type: DataTypes.ENUM('open', 'solved', 'pending'),
+      type: DataTypes.ENUM('open', 'pending', 'solved'),
       defaultValue: 'open'
     },
     priority: {
@@ -21,29 +21,38 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false
     },
-    gmailThreadId: {
-      type: DataTypes.STRING
+    customerId: {
+      type: DataTypes.UUID,
+      allowNull: false
+    },
+    assignedToId: {
+      type: DataTypes.UUID,
+      allowNull: true
     }
   }, {
     timestamps: true
   });
 
-  Ticket.associate = (models) => {
-    Ticket.belongsTo(models.User, {
-      foreignKey: 'assignedToId',
-      as: 'assignedTo'
-    });
+  Ticket.associate = function(models) {
+    // Asegurarse de que los modelos existen antes de crear las asociaciones
+    if (!models.Customer || !models.User || !models.Message) {
+      throw new Error('Required models not loaded for Ticket associations');
+    }
+
+    // Asociaciones
     Ticket.belongsTo(models.Customer, {
       foreignKey: 'customerId',
       as: 'customer'
     });
+
+    Ticket.belongsTo(models.User, {
+      foreignKey: 'assignedToId',
+      as: 'assignedTo'
+    });
+
     Ticket.hasMany(models.Message, {
       foreignKey: 'ticketId',
       as: 'messages'
-    });
-    Ticket.hasMany(models.Attachment, {
-      foreignKey: 'ticketId',
-      as: 'attachments'
     });
   };
 

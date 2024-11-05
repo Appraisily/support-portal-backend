@@ -9,6 +9,7 @@ const defineCustomer = require('../models/customer');
 const defineUser = require('../models/user');
 
 let sequelize;
+let models = {};
 
 // Configuración para Cloud SQL en producción
 if (process.env.NODE_ENV === 'production') {
@@ -46,7 +47,7 @@ const initializeDatabase = async () => {
     logger.info('Database connection established successfully');
 
     // Definir modelos
-    const models = {
+    models = {
       User: defineUser(sequelize, DataTypes),
       Customer: defineCustomer(sequelize, DataTypes),
       Ticket: defineTicket(sequelize, DataTypes),
@@ -54,22 +55,13 @@ const initializeDatabase = async () => {
       Attachment: defineAttachment(sequelize, DataTypes)
     };
 
-    // Esperar a que todos los modelos estén definidos
-    await Promise.all(Object.values(models));
-    logger.info('All models defined successfully');
-
-    // Configurar asociaciones
-    for (const modelName of Object.keys(models)) {
-      if (typeof models[modelName].associate === 'function') {
-        try {
-          await models[modelName].associate(models);
-          logger.info(`Associations configured for ${modelName}`);
-        } catch (error) {
-          logger.error(`Error configuring associations for ${modelName}:`, error);
-          throw error;
-        }
+    // Configurar asociaciones después de que todos los modelos estén definidos
+    Object.keys(models).forEach(modelName => {
+      if (models[modelName].associate) {
+        models[modelName].associate(models);
+        logger.info(`Associations configured for ${modelName}`);
       }
-    }
+    });
 
     logger.info('All associations configured successfully');
 
@@ -84,13 +76,11 @@ const initializeDatabase = async () => {
   }
 };
 
-// Inicializar modelos y asociaciones
-const models = {};
 let initialized = false;
 
 const getModels = async () => {
   if (!initialized) {
-    Object.assign(models, await initializeDatabase());
+    await initializeDatabase();
     initialized = true;
   }
   return models;
@@ -98,6 +88,5 @@ const getModels = async () => {
 
 module.exports = {
   sequelize,
-  models,
   getModels
 };
