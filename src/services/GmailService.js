@@ -10,6 +10,26 @@ class GmailService {
 
     this.userEmail = process.env.GMAIL_USER_EMAIL;
     logger.info(`Initializing Gmail service for: ${this.userEmail}`);
+
+    // Configurar OAuth2 con los scopes necesarios
+    this.oauth2Client = new google.auth.OAuth2(
+      process.env.GMAIL_CLIENT_ID,
+      process.env.GMAIL_CLIENT_SECRET,
+      'https://developers.google.com/oauthplayground'
+    );
+
+    // Configurar scopes completos
+    const scopes = [
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.modify',
+      'https://www.googleapis.com/auth/gmail.settings.basic',
+      'https://www.googleapis.com/auth/pubsub'
+    ];
+
+    this.oauth2Client.setCredentials({
+      refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+      scope: scopes.join(' ')
+    });
   }
 
   async setupGmail() {
@@ -85,11 +105,6 @@ class GmailService {
         await this.setupGmail();
       }
 
-      // Verificar permisos de Pub/Sub
-      const pubsub = new PubSub();
-      const [topics] = await pubsub.getTopics();
-      logger.info('Available Pub/Sub topics:', topics.map(t => t.name));
-
       const topicName = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`;
       logger.info(`Using Pub/Sub topic: ${topicName}`);
 
@@ -103,24 +118,41 @@ class GmailService {
         logger.warn('No existing watch to stop or error stopping watch:', error.message);
       }
 
-      // Configurar nuevo watch
-      const response = await this.gmail.users.watch({
-        userId: this.userEmail,
-        requestBody: {
-          labelIds: ['INBOX'],
-          topicName: topicName,
-          labelFilterAction: 'include'
-        }
-      });
+      // Configurar nuevo watch con retry
+      const maxRetries = 3;
+      let lastError;
 
-      logger.info('Gmail watch setup response:', response.data);
-      return response.data;
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          const response = await this.gmail.users.watch({
+            userId: this.userEmail,
+            requestBody: {
+              labelIds: ['INBOX'],
+              topicName: topicName,
+              labelFilterAction: 'include'
+            }
+          });
+
+          logger.info('Gmail watch setup successful:', response.data);
+          return response.data;
+        } catch (error) {
+          lastError = error;
+          logger.warn(`Watch setup attempt ${i + 1} failed:`, error.message);
+          
+          if (i < maxRetries - 1) {
+            // Esperar antes de reintentar (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+          }
+        }
+      }
+
+      // Si llegamos aquí, todos los intentos fallaron
+      throw lastError;
 
     } catch (error) {
       logger.error('Failed to setup Gmail watch:', {
         error: error.message,
         stack: error.stack,
-        code: error.code,
         details: error.response?.data
       });
       throw error;
