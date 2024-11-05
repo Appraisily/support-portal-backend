@@ -10,19 +10,37 @@ exports.handleWebhook = async (req, res, next) => {
       headers: req.headers 
     });
 
-    const message = req.body.message;
+    // Validar que la petición viene de Google
+    const googleIPs = ['66.249.93.', '142.250.', '35.191.'];
+    const clientIP = req.headers['x-forwarded-for'] || req.ip;
     
+    if (!googleIPs.some(ip => clientIP.startsWith(ip))) {
+      logger.warn('Invalid webhook request - unexpected IP:', clientIP);
+      return res.status(400).json({ error: 'Invalid request' });
+    }
+
+    // Validar el payload
+    const message = req.body.message;
     if (!message?.data) {
-      logger.warn('Invalid webhook payload received:', req.body);
+      logger.warn('Invalid webhook payload - missing message data');
       return res.status(400).json({ error: 'Invalid payload' });
     }
 
     // Decodificar el payload
-    const data = JSON.parse(Buffer.from(message.data, 'base64').toString());
-    logger.info('Decoded webhook data:', data);
-    
-    if (data.emailId) {
-      await GmailService.handleNewEmail(data.emailId);
+    const decodedData = Buffer.from(message.data, 'base64').toString();
+    const notification = JSON.parse(decodedData);
+    logger.info('Decoded webhook data:', notification);
+
+    // Procesar solo si el historyId es mayor que el último procesado
+    const lastHistoryId = await GmailService.getLastHistoryId();
+    if (!lastHistoryId || notification.historyId > lastHistoryId) {
+      await GmailService.processNewEmails(notification);
+      await GmailService.updateLastHistoryId(notification.historyId);
+    } else {
+      logger.info('Skipping notification - already processed:', {
+        current: notification.historyId,
+        last: lastHistoryId
+      });
     }
 
     res.status(200).json({ success: true });
