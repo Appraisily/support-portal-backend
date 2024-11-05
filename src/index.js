@@ -5,6 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
+const GmailService = require('./services/GmailService');
 
 const app = express();
 
@@ -79,6 +80,21 @@ async function startServer() {
     const routes = require('./routes');
     app.use('/api', routes);
 
+    // Configurar Gmail watch automáticamente al iniciar en producción
+    if (process.env.NODE_ENV === 'production') {
+      try {
+        logger.info('Initializing Gmail service...');
+        await GmailService.setupGmail();
+        
+        logger.info('Setting up Gmail watch during startup...');
+        await GmailService.setupGmailWatch();
+        logger.info('Gmail watch configured successfully');
+      } catch (error) {
+        logger.error('Failed to setup Gmail watch during startup:', error);
+        // No detenemos el servidor por este error
+      }
+    }
+
     // 5. Iniciar servidor HTTP
     logger.info('5. Starting HTTP server...');
     const PORT = process.env.PORT || 8080;
@@ -111,7 +127,7 @@ async function startServer() {
 
 // Iniciar el servidor y manejar errores no capturados
 startServer().catch(error => {
-  logger.error('Unhandled error during server startup:', error);
+  logger.error('Failed to start server:', error);
   process.exit(1);
 });
 
