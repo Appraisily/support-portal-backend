@@ -6,10 +6,11 @@ const client = new SecretManagerServiceClient();
 // Lista de secretos requeridos
 const REQUIRED_SECRETS = {
   // Credenciales de base de datos para Cloud SQL
-  DB_NAME: 'db-name',
-  DB_USER: 'db-user',
-  DB_PASSWORD: 'db-password',
-  CLOUD_SQL_CONNECTION_NAME: 'cloud-sql-connection',
+  DB_NAME: 'DB_NAME',
+  DB_USER: 'DB_USER',
+  DB_PASSWORD: 'DB_PASSWORD',
+  DB_HOST: 'DB_HOST',
+  DB_PORT: 'DB_PORT',
 
   // Credenciales de administrador para el frontend
   ADMIN_EMAIL: 'admin-email',
@@ -37,15 +38,23 @@ async function loadSecrets() {
     for (const [envVar, secretName] of Object.entries(REQUIRED_SECRETS)) {
       logger.info(`Accessing secret: ${secretName}`);
       
-      const [version] = await client.accessSecretVersion({
-        name: `projects/${projectId}/secrets/${secretName}/versions/latest`,
-      });
+      try {
+        const [version] = await client.accessSecretVersion({
+          name: `projects/${projectId}/secrets/${secretName}/versions/latest`,
+        });
 
-      const secretValue = version.payload.data.toString();
-      process.env[envVar] = secretValue;
+        const secretValue = version.payload.data.toString();
+        process.env[envVar] = secretValue;
 
-      logger.info(`Secret ${secretName} retrieved successfully`);
-      logger.info(`Loaded secret: ${secretName}`);
+        logger.info(`Secret ${secretName} retrieved successfully`);
+        logger.info(`Loaded secret: ${secretName}`);
+      } catch (error) {
+        if (error.code === 5) { // NOT_FOUND
+          logger.warn(`Secret ${secretName} not found, skipping...`);
+          continue;
+        }
+        throw error;
+      }
     }
 
     logger.info('All required secrets loaded successfully');
