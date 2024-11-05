@@ -1,5 +1,6 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
+const { PubSub } = require('@google-cloud/pubsub');
 
 class GmailService {
   constructor() {
@@ -157,6 +158,29 @@ class GmailService {
 
   async setupGmailWatch() {
     try {
+      // Obtener y loggear la identidad actual
+      const authClient = await this.oauth2Client.getAccessToken();
+      logger.info('Current credentials:', {
+        hasAccessToken: !!authClient.token,
+        tokenExpiry: authClient.res?.data?.expiry_date,
+        scopes: this.oauth2Client.credentials.scope
+      });
+
+      // Intentar obtener información del usuario
+      const userInfo = await this.gmail.users.getProfile({
+        userId: 'me'
+      });
+      logger.info('Acting as Gmail user:', userInfo.data);
+
+      // Verificar permisos de Pub/Sub
+      const pubsub = new PubSub();
+      try {
+        const [topics] = await pubsub.getTopics();
+        logger.info('Pub/Sub topics accessible:', topics.map(t => t.name));
+      } catch (error) {
+        logger.error('Failed to list Pub/Sub topics:', error);
+      }
+
       if (!process.env.GOOGLE_CLOUD_PROJECT_ID) {
         throw new Error('GOOGLE_CLOUD_PROJECT_ID environment variable is not set');
       }
@@ -189,7 +213,7 @@ class GmailService {
       logger.info(`Gmail watch setup successfully for ${this.userEmail}:`, response.data);
       return response.data;
     } catch (error) {
-      logger.error(`Failed to setup Gmail watch for ${this.userEmail}:`, error);
+      logger.error('Failed to setup Gmail watch:', error);
       throw error;
     }
   }
