@@ -7,6 +7,9 @@ const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
 const GmailService = require('./services/GmailService');
 
+// Importar rutas
+const gmailRoutes = require('./routes/gmail.routes');
+
 async function startServer() {
   try {
     // 1. Cargar secretos primero
@@ -66,6 +69,9 @@ async function startServer() {
         // No detenemos el servidor por este error
       }
     }
+
+    // Configurar rutas
+    app.use('/api/gmail', gmailRoutes);
 
     // 4. Iniciar servidor HTTP
     const PORT = process.env.PORT || 8080;

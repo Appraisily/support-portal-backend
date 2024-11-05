@@ -310,6 +310,59 @@ class GmailService {
       throw error;
     }
   }
+
+  async processNewEmails(notification) {
+    try {
+      logger.info('Processing new emails from notification:', notification);
+
+      // Obtener el historyId de la notificación
+      const historyId = notification.historyId;
+      
+      // Obtener los cambios desde el último historyId
+      const response = await this.gmail.users.history.list({
+        userId: this.userEmail,
+        startHistoryId: historyId,
+        historyTypes: ['messageAdded']
+      });
+
+      if (!response.data.history) {
+        logger.info('No new messages found');
+        return;
+      }
+
+      // Procesar cada mensaje nuevo
+      for (const history of response.data.history) {
+        for (const message of history.messagesAdded || []) {
+          const messageId = message.message.id;
+          
+          // Obtener detalles del mensaje
+          const messageDetails = await this.gmail.users.messages.get({
+            userId: this.userEmail,
+            id: messageId,
+            format: 'full'
+          });
+
+          logger.info('New email received:', {
+            id: messageId,
+            subject: this.getHeader(messageDetails.data.payload.headers, 'Subject'),
+            from: this.getHeader(messageDetails.data.payload.headers, 'From')
+          });
+
+          // Aquí puedes añadir la lógica para procesar el email
+          // Por ejemplo, crear un ticket, etc.
+        }
+      }
+
+    } catch (error) {
+      logger.error('Error processing new emails:', error);
+      throw error;
+    }
+  }
+
+  getHeader(headers, name) {
+    const header = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
+    return header ? header.value : null;
+  }
 }
 
 module.exports = new GmailService();
