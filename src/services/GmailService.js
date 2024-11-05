@@ -1,6 +1,5 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
-const { PubSub } = require('@google-cloud/pubsub');
 
 class GmailService {
   constructor() {
@@ -10,59 +9,38 @@ class GmailService {
 
     this.userEmail = process.env.GMAIL_USER_EMAIL;
     logger.info(`Initializing Gmail service for: ${this.userEmail}`);
-
-    // Configurar OAuth2 con los scopes necesarios
-    this.oauth2Client = new google.auth.OAuth2(
-      process.env.GMAIL_CLIENT_ID,
-      process.env.GMAIL_CLIENT_SECRET,
-      'https://developers.google.com/oauthplayground'
-    );
-
-    // Configurar scopes completos
-    const scopes = [
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/gmail.modify',
-      'https://www.googleapis.com/auth/gmail.settings.basic',
-      'https://www.googleapis.com/auth/pubsub'
-    ];
-
-    this.oauth2Client.setCredentials({
-      refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-      scope: scopes.join(' ')
-    });
   }
 
   async setupGmail() {
     try {
       logger.info('Setting up Gmail with OAuth2...');
       
-      // Verificar que tenemos todas las credenciales necesarias
-      const requiredVars = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_REFRESH_TOKEN', 'GMAIL_USER_EMAIL'];
+      // Verificar credenciales
+      const requiredVars = ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GMAIL_REFRESH_TOKEN'];
       const missingVars = requiredVars.filter(varName => !process.env[varName]);
       
       if (missingVars.length > 0) {
         throw new Error(`Missing required Gmail variables: ${missingVars.join(', ')}`);
       }
 
-      // Log de las credenciales (sin mostrar valores completos)
-      logger.info('Gmail credentials:', {
-        clientId: `${process.env.GMAIL_CLIENT_ID.substring(0, 8)}...`,
-        clientSecret: process.env.GMAIL_CLIENT_SECRET ? '(set)' : '(not set)',
-        refreshToken: process.env.GMAIL_REFRESH_TOKEN ? '(set)' : '(not set)',
-        userEmail: process.env.GMAIL_USER_EMAIL
-      });
-
-      // Crear nuevo cliente OAuth2
+      // Configurar OAuth2 con los scopes necesarios
       this.oauth2Client = new google.auth.OAuth2(
         process.env.GMAIL_CLIENT_ID,
         process.env.GMAIL_CLIENT_SECRET,
         'https://developers.google.com/oauthplayground'
       );
 
-      // Configurar credenciales
+      // Configurar scopes completos
+      const scopes = [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.settings.basic',
+        'https://www.googleapis.com/auth/pubsub'
+      ];
+
       this.oauth2Client.setCredentials({
         refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-        token_type: 'Bearer'
+        scope: scopes.join(' ')
       });
 
       // Crear cliente Gmail
@@ -80,17 +58,10 @@ class GmailService {
       return userInfo.data;
 
     } catch (error) {
-      // Log detallado del error
       logger.error('Failed to setup Gmail:', {
         error: error.message,
         stack: error.stack,
-        response: error.response?.data,
-        config: {
-          clientId: process.env.GMAIL_CLIENT_ID ? 'present' : 'missing',
-          clientSecret: process.env.GMAIL_CLIENT_SECRET ? 'present' : 'missing',
-          refreshToken: process.env.GMAIL_REFRESH_TOKEN ? 'present' : 'missing',
-          userEmail: process.env.GMAIL_USER_EMAIL
-        }
+        response: error.response?.data
       });
       throw error;
     }
