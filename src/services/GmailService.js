@@ -13,6 +13,7 @@ class GmailService {
 
     // Inicializar autenticación según el entorno
     if (process.env.NODE_ENV === 'production') {
+      logger.info('Initializing Gmail service in production mode');
       this.auth = new google.auth.GoogleAuth({
         scopes: [
           'https://www.googleapis.com/auth/gmail.modify',
@@ -187,35 +188,33 @@ class GmailService {
   async setupGmailWatch() {
     try {
       if (process.env.NODE_ENV === 'production') {
+        logger.info('Starting Gmail watch setup in production...');
+        
         // Asegurarse de que Gmail está inicializado
         if (!this.gmail) {
+          logger.info('Gmail not initialized, setting up...');
           await this.setupGmail();
         }
+
+        // Verificar credenciales
+        const client = await this.auth.getClient();
+        logger.info('Auth client obtained successfully');
 
         // Obtener información del usuario
         const userInfo = await this.gmail.users.getProfile({
           userId: 'me'
         });
-        logger.info('Acting as Gmail user:', userInfo.data);
+        logger.info('Gmail user profile:', userInfo.data);
 
         // Verificar permisos de Pub/Sub
         const pubsub = new PubSub();
         const [topics] = await pubsub.getTopics();
-        logger.info('Pub/Sub topics accessible:', topics.map(t => t.name));
-
-        // Detener watch existente si hay uno
-        try {
-          await this.gmail.users.stop({
-            userId: 'me'
-          });
-          logger.info('Stopped existing Gmail watch');
-        } catch (error) {
-          logger.warn('No existing watch to stop or error stopping watch:', error.message);
-        }
+        logger.info('Available Pub/Sub topics:', topics.map(t => t.name));
 
         const topicName = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`;
-        
-        // Configurar nuevo watch
+        logger.info(`Using Pub/Sub topic: ${topicName}`);
+
+        // Configurar watch
         const response = await this.gmail.users.watch({
           userId: this.userEmail,
           requestBody: {
@@ -225,7 +224,7 @@ class GmailService {
           }
         });
 
-        logger.info(`Gmail watch setup successfully for ${this.userEmail}:`, response.data);
+        logger.info('Gmail watch setup response:', response.data);
         return response.data;
       } else {
         // Código existente para desarrollo
@@ -284,7 +283,11 @@ class GmailService {
         return response.data;
       }
     } catch (error) {
-      logger.error('Failed to setup Gmail watch:', error);
+      logger.error('Gmail watch setup failed:', {
+        error: error.message,
+        stack: error.stack,
+        code: error.code
+      });
       throw error;
     }
   }
