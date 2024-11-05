@@ -40,11 +40,27 @@ if (process.env.NODE_ENV === 'production') {
   );
 }
 
+let initializationPromise = null;
+
+const getModels = async () => {
+  if (!initializationPromise) {
+    initializationPromise = initializeDatabase();
+  }
+  await initializationPromise;
+  return models;
+};
+
 const initializeDatabase = async () => {
+  if (initialized) return models;
+  
   try {
-    // Probar conexión
-    await sequelize.authenticate();
-    logger.info('Database connection established successfully');
+    logger.info('Iniciando conexión a base de datos...');
+    
+    // Verificar que tenemos las credenciales necesarias
+    if (!process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
+      logger.error('Faltan credenciales de base de datos');
+      throw new Error('Credenciales de base de datos incompletas');
+    }
 
     // Definir modelos
     models = {
@@ -69,24 +85,17 @@ const initializeDatabase = async () => {
     await sequelize.sync({ alter: true });
     logger.info('Database synchronized successfully');
 
+    initialized = true;
     return models;
   } catch (error) {
-    logger.error('Database initialization failed:', error);
+    initializationPromise = null; // Permitir reintentar en caso de error
+    logger.error('Error inicializando base de datos:', error);
     throw error;
   }
 };
 
-let initialized = false;
-
-const getModels = async () => {
-  if (!initialized) {
-    await initializeDatabase();
-    initialized = true;
-  }
-  return models;
-};
-
 module.exports = {
   sequelize,
-  getModels
+  getModels,
+  initializeDatabase
 };

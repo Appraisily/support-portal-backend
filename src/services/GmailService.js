@@ -285,6 +285,9 @@ class GmailService {
 
   async handleNewEmail(emailId) {
     try {
+      logger.info('=== INICIO CREACIÓN TICKET ===');
+      logger.info('1. Obteniendo detalles del email:', emailId);
+
       const email = await this.gmail.users.messages.get({
         userId: 'me',
         id: emailId
@@ -293,8 +296,10 @@ class GmailService {
       const headers = email.data.payload.headers;
       const to = headers.find(h => h.name === 'To')?.value;
       
-      // Solo procesar emails enviados a info@appraisily.com
+      logger.info('2. Verificando destinatario:', { to });
+      
       if (!to?.includes('info@appraisily.com')) {
+        logger.info('Email no dirigido a info@appraisily.com, ignorando');
         return;
       }
 
@@ -302,26 +307,28 @@ class GmailService {
       const from = headers.find(h => h.name === 'From')?.value;
       const content = this.extractEmailContent(email.data.payload);
 
-      // Crear ticket
+      logger.info('3. Datos extraídos:', { subject, from });
+
       const models = await getModels();
       
-      // Extraer email del remitente
       const emailMatch = from.match(/<(.+?)>/);
       const senderEmail = emailMatch ? emailMatch[1] : from;
 
-      // Buscar o crear cliente
+      logger.info('4. Buscando cliente:', { senderEmail });
+      
       let customer = await models.Customer.findOne({ 
         where: { email: senderEmail } 
       });
 
       if (!customer) {
+        logger.info('5. Cliente no encontrado, creando nuevo');
         customer = await models.Customer.create({
           email: senderEmail,
           name: from.split('<')[0].trim()
         });
       }
 
-      // Crear ticket
+      logger.info('6. Creando ticket');
       const ticket = await models.Ticket.create({
         subject: subject || 'Sin asunto',
         status: 'open',
@@ -348,18 +355,16 @@ class GmailService {
 
   async processNewEmails(notification) {
     try {
-      logger.info('Processing new emails from notification:', notification);
-
-      // Asegurarse de que Gmail está inicializado
+      logger.info('=== INICIO PROCESAMIENTO EMAIL ===');
+      logger.info('1. Inicializando Gmail...');
+      
       if (!this.gmail) {
-        logger.info('Gmail not initialized, setting up...');
         await this.setupGmail();
       }
 
-      // Obtener el historyId de la notificación
       const historyId = notification.historyId;
-      
-      // Obtener los cambios desde el último historyId
+      logger.info('2. Obteniendo historial desde:', historyId);
+
       const response = await this.gmail.users.history.list({
         userId: this.userEmail,
         startHistoryId: historyId,
@@ -367,40 +372,50 @@ class GmailService {
       });
 
       if (!response.data.history) {
-        logger.info('No new messages found');
+        logger.info('3. No hay mensajes nuevos');
         return;
       }
 
-      // Procesar cada mensaje nuevo
+      logger.info('3. Mensajes encontrados:', {
+        total: response.data.history.length
+      });
+
       for (const history of response.data.history) {
         for (const message of history.messagesAdded || []) {
           const messageId = message.message.id;
-          
-          // Verificar si ya procesamos este mensaje
+          logger.info('4. Procesando mensaje:', { messageId });
+
           if (await this.isMessageProcessed(messageId)) {
-            logger.info('Skipping already processed message:', messageId);
+            logger.info('5. Mensaje ya procesado, saltando');
             continue;
           }
 
           try {
-            // Procesar el mensaje y crear ticket
-            await this.handleNewEmail(messageId);
-            // Si se procesa correctamente, marcarlo como procesado
+            logger.info('5. Creando ticket para mensaje:', messageId);
+            const ticket = await this.handleNewEmail(messageId);
+            logger.info('6. Ticket creado:', {
+              ticketId: ticket.id,
+              messageId: messageId
+            });
+            
             await this.markMessageAsProcessed(messageId);
+            logger.info('7. Mensaje marcado como procesado');
           } catch (error) {
-            logger.error('Error processing message:', {
+            logger.error('Error procesando mensaje:', {
               messageId,
-              error: error.message
+              error: error.message,
+              stack: error.stack
             });
           }
         }
       }
 
-      // Actualizar el último historyId procesado
-      await this.updateLastHistoryId(historyId);
-
+      logger.info('=== FIN PROCESAMIENTO EMAIL ===');
     } catch (error) {
-      logger.error('Error processing new emails:', error);
+      logger.error('Error general procesando emails:', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }

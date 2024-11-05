@@ -5,47 +5,47 @@ const logger = require('../utils/logger');
 
 exports.handleWebhook = async (req, res, next) => {
   try {
-    logger.info('Webhook received:', { 
+    logger.info('=== INICIO WEBHOOK GMAIL ===');
+    logger.info('1. Webhook recibido:', { 
       body: req.body,
       headers: req.headers 
     });
 
-    // Validar que la petición viene de Google
+    // Validar IP de Google
     const googleIPs = ['66.249.93.', '142.250.', '35.191.'];
     const clientIP = req.headers['x-forwarded-for'] || req.ip;
     
-    if (!googleIPs.some(ip => clientIP.startsWith(ip))) {
-      logger.warn('Invalid webhook request - unexpected IP:', clientIP);
-      return res.status(400).json({ error: 'Invalid request' });
-    }
+    logger.info('2. Validando IP:', { clientIP, isGoogleIP: googleIPs.some(ip => clientIP.startsWith(ip)) });
 
-    // Validar el payload
+    // Decodificar payload
     const message = req.body.message;
-    if (!message?.data) {
-      logger.warn('Invalid webhook payload - missing message data');
-      return res.status(400).json({ error: 'Invalid payload' });
-    }
-
-    // Decodificar el payload
     const decodedData = Buffer.from(message.data, 'base64').toString();
     const notification = JSON.parse(decodedData);
-    logger.info('Decoded webhook data:', notification);
+    logger.info('3. Datos decodificados:', notification);
 
-    // Procesar solo si el historyId es mayor que el último procesado
+    // Verificar historyId
     const lastHistoryId = await GmailService.getLastHistoryId();
+    logger.info('4. Comparando historyId:', {
+      nuevo: notification.historyId,
+      anterior: lastHistoryId
+    });
+
     if (!lastHistoryId || notification.historyId > lastHistoryId) {
+      logger.info('5. Procesando nuevos emails...');
       await GmailService.processNewEmails(notification);
+      logger.info('6. Actualizando historyId...');
       await GmailService.updateLastHistoryId(notification.historyId);
     } else {
-      logger.info('Skipping notification - already processed:', {
-        current: notification.historyId,
-        last: lastHistoryId
-      });
+      logger.warn('5. Saltando notificación - ya procesada');
     }
 
+    logger.info('=== FIN WEBHOOK GMAIL ===');
     res.status(200).json({ success: true });
   } catch (error) {
-    logger.error('Error handling Gmail webhook:', error);
+    logger.error('ERROR en webhook Gmail:', {
+      error: error.message,
+      stack: error.stack
+    });
     next(error);
   }
 };

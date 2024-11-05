@@ -4,7 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
-const { initializeModels } = require('./models');
+const { initializeDatabase } = require('./config/database');
 const routes = require('./routes');
 const GmailService = require('./services/GmailService');
 const secretManager = require('./utils/secretManager');
@@ -18,8 +18,8 @@ async function startServer() {
     }
 
     // 2. Inicializar base de datos
-    logger.info('Initializing database models...');
-    await initializeModels();
+    logger.info('Initializing database...');
+    await initializeDatabase();
 
     // 3. Configurar Express y middleware
     const app = express();
