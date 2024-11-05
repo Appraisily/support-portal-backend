@@ -26,11 +26,19 @@ const REQUIRED_SECRETS = {
 
 async function loadSecrets() {
   try {
+    // Verificar que tenemos el ID del proyecto
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
+    if (!projectId) {
+      throw new Error('GOOGLE_CLOUD_PROJECT_ID environment variable is not set');
+    }
+
+    logger.info(`Loading secrets for project: ${projectId}`);
+
     for (const [envVar, secretName] of Object.entries(REQUIRED_SECRETS)) {
       logger.info(`Accessing secret: ${secretName}`);
       
       const [version] = await client.accessSecretVersion({
-        name: `projects/${process.env.PROJECT_ID}/secrets/${secretName}/versions/latest`,
+        name: `projects/${projectId}/secrets/${secretName}/versions/latest`,
       });
 
       const secretValue = version.payload.data.toString();
