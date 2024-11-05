@@ -29,6 +29,15 @@ async function initializeModels() {
     Setting: require('./setting')(sequelize, DataTypes)
   };
 
+  // Verificar que todos los modelos se cargaron correctamente
+  const missingModels = Object.entries(models)
+    .filter(([name, model]) => !model)
+    .map(([name]) => name);
+
+  if (missingModels.length > 0) {
+    throw new Error(`Failed to load models: ${missingModels.join(', ')}`);
+  }
+
   // Configurar asociaciones
   Object.keys(models).forEach(modelName => {
     if (models[modelName].associate) {
@@ -37,8 +46,14 @@ async function initializeModels() {
   });
 
   // Sincronizar modelos con la base de datos
-  await sequelize.sync();
-  
+  try {
+    await sequelize.sync();
+    logger.info('Database models synchronized successfully');
+  } catch (error) {
+    logger.error('Failed to sync database models:', error);
+    throw error;
+  }
+
   return models;
 }
 
