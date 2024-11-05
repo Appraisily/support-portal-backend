@@ -57,7 +57,7 @@ exports.testConnection = async (req, res, next) => {
   try {
     logger.info('Testing Gmail connection...');
     
-    // Obtener los últimos 5 emails sin leer
+    // Obtener los últimos 5 emails sin leer.
     const result = await GmailService.testConnection();
     
     res.json({
