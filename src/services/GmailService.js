@@ -23,24 +23,16 @@ class GmailService {
         throw new Error(`Missing required Gmail variables: ${missingVars.join(', ')}`);
       }
 
-      // Configurar OAuth2 con los scopes necesarios
+      // Configurar OAuth2
       this.oauth2Client = new google.auth.OAuth2(
         process.env.GMAIL_CLIENT_ID,
         process.env.GMAIL_CLIENT_SECRET,
         'https://developers.google.com/oauthplayground'
       );
 
-      // Configurar scopes completos
-      const scopes = [
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/gmail.settings.basic',
-        'https://www.googleapis.com/auth/pubsub'
-      ];
-
+      // Configurar credenciales
       this.oauth2Client.setCredentials({
-        refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-        scope: scopes.join(' ')
+        refresh_token: process.env.GMAIL_REFRESH_TOKEN
       });
 
       // Crear cliente Gmail
@@ -108,16 +100,19 @@ class GmailService {
           return response.data;
         } catch (error) {
           lastError = error;
-          logger.warn(`Watch setup attempt ${i + 1} failed:`, error.message);
+          logger.warn(`Watch setup attempt ${i + 1} failed:`, {
+            error: error.message,
+            response: error.response?.data
+          });
           
           if (i < maxRetries - 1) {
-            // Esperar antes de reintentar (exponential backoff)
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+            const delay = Math.pow(2, i) * 1000;
+            logger.info(`Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           }
         }
       }
 
-      // Si llegamos aquí, todos los intentos fallaron
       throw lastError;
 
     } catch (error) {
