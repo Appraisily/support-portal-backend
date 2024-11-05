@@ -13,54 +13,71 @@ let models = {};
 let initialized = false;
 let initializationPromise = null;
 
-// Configuración para Cloud SQL en producción
-if (process.env.NODE_ENV === 'production') {
-  sequelize = new Sequelize(
-    process.env.DB_NAME,
-    process.env.DB_USER,
-    process.env.DB_PASSWORD,
-    {
-      dialect: 'postgres',
-      host: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME,
-      logging: (msg) => logger.debug(msg),
-      dialectOptions: {
-        socketPath: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME
-      }
-    }
-  );
-} else {
-  // Configuración para desarrollo local
-  sequelize = new Sequelize(
-    process.env.DB_NAME,
-    process.env.DB_USER,
-    process.env.DB_PASSWORD,
-    {
-      dialect: 'postgres',
-      host: process.env.DB_HOST || 'localhost',
-      logging: (msg) => logger.debug(msg)
-    }
-  );
-}
-
-const getModels = async () => {
-  if (!initializationPromise) {
-    initializationPromise = initializeDatabase();
-  }
-  await initializationPromise;
-  return models;
-};
-
 const initializeDatabase = async () => {
   if (initialized) return models;
   
   try {
     logger.info('Iniciando conexión a base de datos...');
     
+    // Log detallado de la configuración
+    logger.info('Configuración de base de datos:', {
+      environment: process.env.NODE_ENV,
+      dbName: process.env.DB_NAME,
+      dbUser: process.env.DB_USER,
+      dbHost: process.env.DB_HOST,
+      dbPort: process.env.DB_PORT,
+      connectionName: process.env.CLOUD_SQL_CONNECTION_NAME,
+      hasPassword: !!process.env.DB_PASSWORD
+    });
+
     // Verificar que tenemos las credenciales necesarias
     if (!process.env.DB_USER || !process.env.DB_PASSWORD || !process.env.DB_NAME) {
-      logger.error('Faltan credenciales de base de datos');
+      logger.error('Faltan credenciales de base de datos:', {
+        hasUser: !!process.env.DB_USER,
+        hasPassword: !!process.env.DB_PASSWORD,
+        hasDBName: !!process.env.DB_NAME,
+        hasConnectionName: !!process.env.CLOUD_SQL_CONNECTION_NAME
+      });
       throw new Error('Credenciales de base de datos incompletas');
     }
+
+    // Crear instancia de Sequelize DESPUÉS de verificar las credenciales
+    if (process.env.NODE_ENV === 'production') {
+      logger.info('Configurando conexión para Cloud SQL:', {
+        database: process.env.DB_NAME,
+        username: process.env.DB_USER,
+        socketPath: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME
+      });
+
+      sequelize = new Sequelize(
+        process.env.DB_NAME,
+        process.env.DB_USER,
+        process.env.DB_PASSWORD,
+        {
+          dialect: 'postgres',
+          host: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME,
+          logging: (msg) => logger.debug(msg),
+          dialectOptions: {
+            socketPath: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME
+          }
+        }
+      );
+    } else {
+      sequelize = new Sequelize(
+        process.env.DB_NAME,
+        process.env.DB_USER,
+        process.env.DB_PASSWORD,
+        {
+          dialect: 'postgres',
+          host: process.env.DB_HOST || 'localhost',
+          logging: (msg) => logger.debug(msg)
+        }
+      );
+    }
+
+    // Probar la conexión
+    await sequelize.authenticate();
+    logger.info('Conexión a base de datos establecida correctamente');
 
     // Definir modelos
     models = {
@@ -95,7 +112,12 @@ const initializeDatabase = async () => {
 };
 
 module.exports = {
-  sequelize,
-  getModels,
+  getModels: async () => {
+    if (!initializationPromise) {
+      initializationPromise = initializeDatabase();
+    }
+    await initializationPromise;
+    return models;
+  },
   initializeDatabase
 };

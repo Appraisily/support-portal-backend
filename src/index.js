@@ -15,6 +15,22 @@ async function startServer() {
     if (process.env.NODE_ENV === 'production') {
       logger.info('Loading secrets from Secret Manager...');
       await secretManager.loadSecrets();
+      
+      // Añadir log para verificar los secretos de BD después de cargarlos
+      logger.info('Database credentials after loading secrets:', {
+        hasDBUser: !!process.env.DB_USER,
+        hasDBPassword: !!process.env.DB_PASSWORD,
+        hasDBName: !!process.env.DB_NAME,
+        hasDBHost: !!process.env.DB_HOST,
+        hasDBPort: !!process.env.DB_PORT,
+        hasConnectionName: !!process.env.CLOUD_SQL_CONNECTION_NAME,
+        // Añadir los valores (sin mostrar contraseñas)
+        dbName: process.env.DB_NAME,
+        dbUser: process.env.DB_USER,
+        dbHost: process.env.DB_HOST,
+        dbPort: process.env.DB_PORT,
+        connectionName: process.env.CLOUD_SQL_CONNECTION_NAME
+      });
     }
 
     // 2. Inicializar base de datos
