@@ -9,6 +9,7 @@ class GmailService {
     }
 
     this.userEmail = process.env.GMAIL_USER_EMAIL;
+    this.gmail = null;
     logger.info(`Initializing Gmail service for: ${this.userEmail}`);
     this.lastHistoryId = null;
   }
@@ -146,6 +147,12 @@ class GmailService {
           ticketId: 'mock-ticket-id',
           messageId: 'mock-message-id'
         };
+      }
+
+      // Asegurarse de que Gmail está inicializado
+      if (!this.gmail) {
+        logger.info('Gmail not initialized, setting up...');
+        await this.setupGmail();
       }
 
       const { from, subject, content, threadId } = messageData;
@@ -316,6 +323,12 @@ class GmailService {
   async processNewEmails(notification) {
     try {
       logger.info('Processing new emails from notification:', notification);
+
+      // Asegurarse de que Gmail está inicializado
+      if (!this.gmail) {
+        logger.info('Gmail not initialized, setting up...');
+        await this.setupGmail();
+      }
 
       // Obtener el historyId de la notificación
       const historyId = notification.historyId;
