@@ -360,7 +360,7 @@ class GmailService {
       }
 
       const historyId = notification.historyId;
-      logger.info('2. Obteniendo historial desde:', historyId);
+      logger.info('2. Obteniendo historial desde:', { historyId });
 
       const response = await this.gmail.users.history.list({
         userId: this.userEmail,
@@ -368,35 +368,46 @@ class GmailService {
         historyTypes: ['messageAdded']
       });
 
+      logger.info('3. Respuesta de Gmail:', {
+        hasHistory: !!response.data.history,
+        historyLength: response.data.history?.length,
+        response: response.data
+      });
+
       if (!response.data.history) {
-        logger.info('3. No hay mensajes nuevos');
+        logger.info('No hay mensajes nuevos');
         return;
       }
 
-      logger.info('3. Mensajes encontrados:', {
-        total: response.data.history.length
-      });
-
       for (const history of response.data.history) {
+        logger.info('4. Procesando historia:', {
+          historyId: history.id,
+          messagesAdded: history.messagesAdded?.length
+        });
+
         for (const message of history.messagesAdded || []) {
+          logger.info('5. Procesando mensaje:', {
+            messageId: message.message.id,
+            threadId: message.message.threadId
+          });
           const messageId = message.message.id;
-          logger.info('4. Procesando mensaje:', { messageId });
+          logger.info('6. Procesando mensaje:', { messageId });
 
           if (await this.isMessageProcessed(messageId)) {
-            logger.info('5. Mensaje ya procesado, saltando');
+            logger.info('7. Mensaje ya procesado, saltando');
             continue;
           }
 
           try {
-            logger.info('5. Creando ticket para mensaje:', messageId);
+            logger.info('8. Creando ticket para mensaje:', messageId);
             const ticket = await this.handleNewEmail(messageId);
-            logger.info('6. Ticket creado:', {
+            logger.info('9. Ticket creado:', {
               ticketId: ticket.id,
               messageId: messageId
             });
             
             await this.markMessageAsProcessed(messageId);
-            logger.info('7. Mensaje marcado como procesado');
+            logger.info('10. Mensaje marcado como procesado');
           } catch (error) {
             logger.error('Error procesando mensaje:', {
               messageId,
