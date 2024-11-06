@@ -12,6 +12,7 @@ class GmailService {
     this.initialized = false;
     this.initPromise = null;
     this.models = null;
+    this.lastHistoryId = null;
     logger.info(`Creating Gmail service instance for: ${this.userEmail}`);
   }
 
@@ -378,7 +379,7 @@ class GmailService {
   }
 
   async ensureInitialized() {
-    if (this.initialized && this.models) {
+    if (this.initialized && this.models?.Setting) {
       return true;
     }
 
@@ -389,26 +390,34 @@ class GmailService {
     this.initPromise = (async () => {
       try {
         // Obtener modelos
-        this.models = await getModels();
+        const models = await getModels();
         
-        if (!this.models?.Setting) {
+        if (!models?.Setting) {
           throw new Error('Setting model not available after initialization');
         }
 
+        this.models = models;
+        
         // Configurar Gmail
         await this.setupGmail();
+        
+        // Obtener último historyId
+        this.lastHistoryId = await this.models.Setting.getHistoryId();
         
         this.initialized = true;
         logger.info('Gmail service initialized successfully', {
           hasModels: !!this.models,
-          hasGmail: !!this.gmail
+          hasGmail: !!this.gmail,
+          lastHistoryId: this.lastHistoryId
         });
         
         return true;
       } catch (error) {
         logger.error('Failed to initialize Gmail service', {
           error: error.message,
-          stack: error.stack
+          stack: error.stack,
+          hasModels: !!this.models,
+          hasGmail: !!this.gmail
         });
         this.initialized = false;
         this.models = null;

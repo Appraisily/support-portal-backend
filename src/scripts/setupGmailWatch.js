@@ -2,11 +2,12 @@ const { google } = require('googleapis');
 const { PubSub } = require('@google-cloud/pubsub');
 const secretManager = require('../utils/secretManager');
 const logger = require('../utils/logger');
+const GmailService = require('../services/GmailService');
 
 async function setup() {
   const startTime = Date.now();
   try {
-    // Validar variables de entorno requeridas
+    // Validar variables de entorno
     const requiredEnvVars = [
       'GMAIL_CLIENT_ID',
       'GMAIL_CLIENT_SECRET',
@@ -19,43 +20,13 @@ async function setup() {
       throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
     }
 
-    logger.info('Starting Gmail watch setup', {
-      environment: process.env.NODE_ENV,
-      timestamp: new Date().toISOString()
-    });
+    // Inicializar GmailService
+    const gmailService = new GmailService();
+    await gmailService.ensureInitialized();
 
-    if (process.env.NODE_ENV === 'production') {
-      logger.info('Loading secrets from Secret Manager');
-      await secretManager.loadSecrets();
-    }
-
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GMAIL_CLIENT_ID,
-      process.env.GMAIL_CLIENT_SECRET,
-      'https://developers.google.com/oauthplayground'
-    );
-
-    oauth2Client.setCredentials({
-      refresh_token: process.env.GMAIL_REFRESH_TOKEN
-    });
-
-    logger.info('OAuth2 client configured');
-
-    const gmail = google.gmail({
-      version: 'v1',
-      auth: oauth2Client
-    });
-
-    const pubsub = new PubSub();
-    const [topics] = await pubsub.getTopics();
-    
-    logger.info('PubSub configuration verified', {
-      availableTopics: topics.map(t => t.name),
-      targetTopic: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`
-    });
-
-    const response = await gmail.users.watch({
-      userId: 'info@appraisily.com',
+    // Configurar watch
+    const response = await gmailService.gmail.users.watch({
+      userId: gmailService.userEmail,
       requestBody: {
         labelIds: ['INBOX'],
         topicName: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`,
@@ -63,10 +34,12 @@ async function setup() {
       }
     });
 
-    // Validar respuesta de watch
     if (!response?.data?.historyId) {
       throw new Error('Invalid response from Gmail watch setup');
     }
+
+    // Guardar historyId inicial
+    await gmailService.updateLastHistoryId(response.data.historyId);
 
     logger.info('Gmail watch setup completed', {
       historyId: response.data.historyId,
@@ -77,10 +50,9 @@ async function setup() {
     logger.error('Gmail watch setup failed', {
       error: error.message,
       stack: error.stack,
-      setupTime: Date.now() - startTime,
-      environment: process.env.NODE_ENV
+      setupTime: Date.now() - startTime
     });
-    process.exit(1); // Terminar el proceso en caso de error
+    process.exit(1);
   }
 }
 
