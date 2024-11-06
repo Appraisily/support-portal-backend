@@ -277,7 +277,11 @@ class GmailService {
       logger.info('Processing new email:', { subject: emailData.subject });
       const models = await appState.getModels();
 
-      // Buscar si existe un ticket para este thread
+      // Extraer email del remitente
+      const emailMatch = emailData.from.match(/<(.+?)>/) || [null, emailData.from];
+      const senderEmail = emailMatch[1].toLowerCase();
+
+      // Buscar ticket existente por threadId
       const existingTicket = await models.Ticket.findOne({
         where: {
           gmailThreadId: emailData.threadId
@@ -290,30 +294,32 @@ class GmailService {
       });
 
       if (existingTicket) {
-        logger.info('Found existing ticket:', existingTicket.id);
+        logger.info(`Adding message to existing ticket ${existingTicket.id}`);
         
-        // Añadir nuevo mensaje al ticket existente
-        await models.Message.create({
-          ticketId: existingTicket.id,
-          content: emailData.content,
-          from: emailData.from,
-          gmailMessageId: emailData.messageId
-        });
+        // Añadir mensaje y actualizar ticket
+        await Promise.all([
+          models.Message.create({
+            ticketId: existingTicket.id,
+            content: emailData.content,
+            from: senderEmail,
+            gmailMessageId: emailData.messageId
+          }),
+          existingTicket.update({
+            status: 'open',  // Siempre reabrir el ticket al recibir una respuesta
+            lastMessageAt: new Date()
+          })
+        ]);
 
-        // Actualizar timestamp de última actividad
-        await existingTicket.update({
-          lastMessageAt: new Date()
-        });
-
+        logger.info(`Ticket ${existingTicket.id} reopened due to new response`);
         return existingTicket;
       }
 
-      // Crear nuevo ticket si no existe
-      const customer = await this.findOrCreateCustomer(emailData.from);
+      // Crear nuevo ticket
+      const customer = await this.findOrCreateCustomer(senderEmail);
       
       const ticket = await models.Ticket.create({
-        subject: emailData.subject,
-        status: 'open',  // Siempre 'open' para nuevos tickets
+        subject: emailData.subject || '(No subject)',
+        status: 'open',
         priority: 'medium',
         category: 'general',
         customerId: customer.id,
@@ -322,15 +328,14 @@ class GmailService {
         lastMessageAt: new Date()
       });
 
-      // Crear el primer mensaje
       await models.Message.create({
         ticketId: ticket.id,
         content: emailData.content,
-        from: emailData.from,
+        from: senderEmail,
         gmailMessageId: emailData.messageId
       });
 
-      logger.info('Created new ticket:', ticket.id);
+      logger.info(`Created new ticket ${ticket.id} for email from ${senderEmail}`);
       return ticket;
 
     } catch (error) {
