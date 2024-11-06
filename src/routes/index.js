@@ -1,13 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const authRoutes = require('./authRoutes');
 const ticketRoutes = require('./ticketRoutes');
 const gmailRoutes = require('./gmailRoutes');
 const logger = require('../utils/logger');
 
 // Verificar que todas las rutas estén disponibles
 const routes = {
-  auth: authRoutes,
   tickets: ticketRoutes,
   gmail: gmailRoutes
 };
@@ -28,7 +26,6 @@ if (missingRoutes.length > 0) {
 logger.info('Initializing routes', {
   availableRoutes: Object.keys(routes),
   endpoints: {
-    auth: '/api/auth',
     tickets: '/api/tickets',
     gmail: '/api/gmail'
   }
@@ -49,7 +46,6 @@ router.use((req, res, next) => {
 router.use('/gmail/webhook', gmailRoutes);
 
 // Rutas autenticadas
-router.use('/auth', authRoutes);
 router.use('/tickets', ticketRoutes);
 router.use('/gmail', gmailRoutes);
 

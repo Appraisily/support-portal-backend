@@ -1,10 +1,13 @@
 const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
 
+// Crear una instancia singleton
+const gmailService = new GmailService();
+
 exports.handleWebhook = async (req, res) => {
   const startTime = Date.now();
   try {
-    await GmailService.ensureInitialized();
+    await gmailService.ensureInitialized();
     
     // Validar el cuerpo de la solicitud
     if (!req.body?.message?.data) {
@@ -32,7 +35,7 @@ exports.handleWebhook = async (req, res) => {
       return res.status(200).send('OK - Invalid notification');
     }
 
-    const result = await GmailService.processNewEmails(notification);
+    const result = await gmailService.processNewEmails(notification);
     
     logger.info('Webhook processed successfully', {
       historyId: notification.historyId,
@@ -57,7 +60,6 @@ exports.healthCheck = async (req, res) => {
   try {
     logger.info('Gmail health check initiated');
     
-    const gmailService = new GmailService();
     const status = await gmailService.testConnection();
     
     logger.info('Gmail health check completed', { status });

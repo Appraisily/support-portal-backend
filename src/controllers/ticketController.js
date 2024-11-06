@@ -1,16 +1,11 @@
-const TicketService = require('../services/TicketService');
+const ticketService = require('../services/TicketService');
 const logger = require('../utils/logger');
 
 exports.listTickets = async (req, res, next) => {
   try {
-    const { 
-      status, 
-      priority, 
-      page, 
-      limit, 
-      sort, 
-      order 
-    } = req.query;
+    await ticketService.ensureInitialized();
+    
+    const { status, priority, page, limit, sort, order } = req.query;
 
     logger.info('Listing tickets request:', {
       filters: { status, priority },
@@ -19,31 +14,16 @@ exports.listTickets = async (req, res, next) => {
       userId: req.user?.id
     });
 
-    const result = await TicketService.listTickets(
-      { status,
-        priority,
-        sort,
-        order
-      },
+    const result = await ticketService.listTickets(
+      { status, priority, sort, order },
       { page, limit }
     );
-
-    logger.info('Tickets retrieved successfully:', {
-      totalRecords: result.pagination.total,
-      currentPage: result.pagination.page,
-      totalPages: result.pagination.totalPages,
-      returnedRecords: result.tickets.length
-    });
 
     res.json({
       success: true,
       data: {
         tickets: result.tickets,
-        pagination: {
-          total: result.pagination.total,
-          page: result.pagination.page,
-          totalPages: result.pagination.totalPages
-        }
+        pagination: result.pagination
       }
     });
   } catch (error) {
@@ -63,7 +43,7 @@ exports.getTicket = async (req, res, next) => {
       userId: req.user?.id
     });
 
-    const ticket = await TicketService.getTicketById(req.params.id);
+    const ticket = await ticketService.getTicketById(req.params.id);
     res.json({ ticket });
   } catch (error) {
     logger.error('Error getting ticket', {
@@ -82,7 +62,7 @@ exports.createTicket = async (req, res, next) => {
       userId: req.user?.id
     });
 
-    const ticket = await TicketService.createTicket(req.body);
+    const ticket = await ticketService.createTicket(req.body);
     
     logger.info('Ticket created', {
       ticketId: ticket.id,
@@ -107,7 +87,7 @@ exports.updateTicket = async (req, res, next) => {
       userId: req.user?.id
     });
 
-    const ticket = await TicketService.updateTicket(req.params.id, req.body);
+    const ticket = await ticketService.updateTicket(req.params.id, req.body);
     
     logger.info('Ticket updated', {
       ticketId: ticket.id,
@@ -135,8 +115,8 @@ exports.replyToTicket = async (req, res, next) => {
       hasAttachments: !!attachments
     });
 
-    const ticket = await TicketService.getTicketById(id);
-    const message = await TicketService.addMessage(id, {
+    const ticket = await ticketService.getTicketById(id);
+    const message = await ticketService.addMessage(id, {
       content,
       attachments,
       author: req.user.id

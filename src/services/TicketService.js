@@ -1,51 +1,42 @@
-const { getModels } = require('../config/database');
-const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
+const { getModels } = require('../config/database');
+const ApiError = require('../utils/ApiError');
 
 class TicketService {
   constructor() {
+    if (TicketService.instance) {
+      return TicketService.instance;
+    }
+    TicketService.instance = this;
     this.initialized = false;
-    this.initPromise = null;
+    this.models = null;
   }
 
   async initialize() {
     if (this.initialized) return;
-    if (this.initPromise) return this.initPromise;
+    
+    try {
+      this.models = await getModels();
+      this.initialized = true;
+      logger.info('TicketService initialized');
+    } catch (error) {
+      logger.error('Failed to initialize TicketService', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
 
-    this.initPromise = (async () => {
-      try {
-        logger.info('Initializing TicketService', {
-          timestamp: new Date().toISOString(),
-          environment: process.env.NODE_ENV
-        });
-
-        const models = await getModels();
-        logger.info('Models loaded for TicketService', {
-          availableModels: Object.keys(models),
-          hasRequiredModels: {
-            Ticket: !!models.Ticket,
-            Customer: !!models.Customer,
-            Message: !!models.Message
-          }
-        });
-
-        this.initialized = true;
-        logger.info('TicketService initialized successfully');
-      } catch (error) {
-        logger.error('TicketService initialization failed', {
-          error: error.message,
-          stack: error.stack
-        });
-        throw error;
-      }
-    })();
-
-    return this.initPromise;
+  async ensureInitialized() {
+    if (!this.initialized) {
+      await this.initialize();
+    }
   }
 
   async listTickets(filters = {}, pagination = {}) {
     try {
-      await this.initialize();
+      await this.ensureInitialized();
       
       // Normalizar parámetros
       const { 
@@ -71,26 +62,24 @@ class TicketService {
       if (status) query.status = status;
       if (priority) query.priority = priority;
 
-      const models = await getModels();
-
       // Obtener estadísticas
       const [ticketCount, customerCount, messageCount] = await Promise.all([
-        models.Ticket.count(),
-        models.Customer.count(),
-        models.Message.count()
+        this.models.Ticket.count(),
+        this.models.Customer.count(),
+        this.models.Message.count()
       ]);
 
       // Ejecutar consulta principal
-      const tickets = await models.Ticket.findAndCountAll({
+      const tickets = await this.models.Ticket.findAndCountAll({
         where: query,
         include: [
           {
-            model: models.Customer,
+            model: this.models.Customer,
             as: 'customer',
             attributes: ['id', 'name', 'email']
           },
           {
-            model: models.Message,
+            model: this.models.Message,
             as: 'messages',
             limit: 1,
             order: [['createdAt', 'DESC']]
@@ -162,19 +151,18 @@ class TicketService {
   }
 
   async getTicketById(id) {
-    await this.initialize();
+    await this.ensureInitialized();
     try {
       logger.info('Getting ticket by ID', { ticketId: id });
       
-      const models = await getModels();
-      const ticket = await models.Ticket.findByPk(id, {
+      const ticket = await this.models.Ticket.findByPk(id, {
         include: [
           {
-            model: models.Message,
+            model: this.models.Message,
             as: 'messages'
           },
           {
-            model: models.Attachment,
+            model: this.models.Attachment,
             as: 'attachments'
           }
         ]
@@ -204,7 +192,7 @@ class TicketService {
   }
 
   async createTicket(ticketData) {
-    await this.initialize();
+    await this.ensureInitialized();
     try {
       logger.info('Creating new ticket', {
         subject: ticketData.subject,
@@ -213,8 +201,7 @@ class TicketService {
         customerId: ticketData.customerId
       });
 
-      const models = await getModels();
-      const ticket = await models.Ticket.create(ticketData);
+      const ticket = await this.models.Ticket.create(ticketData);
 
       logger.info('Ticket created successfully', {
         ticketId: ticket.id,
@@ -235,15 +222,14 @@ class TicketService {
   }
 
   async updateTicket(id, updates) {
-    await this.initialize();
+    await this.ensureInitialized();
     try {
       logger.info('Updating ticket', {
         ticketId: id,
         updates: JSON.stringify(updates)
       });
 
-      const models = await getModels();
-      const ticket = await models.Ticket.findByPk(id);
+      const ticket = await this.models.Ticket.findByPk(id);
 
       if (!ticket) {
         logger.warn('Ticket not found for update', { ticketId: id });
@@ -273,7 +259,7 @@ class TicketService {
   }
 
   async addMessage(ticketId, messageData) {
-    await this.initialize();
+    await this.ensureInitialized();
     try {
       logger.info('Adding message to ticket', {
         ticketId,
@@ -281,9 +267,8 @@ class TicketService {
         hasAttachments: !!messageData.attachments
       });
 
-      const models = await getModels();
       const ticket = await this.getTicketById(ticketId);
-      const message = await models.Message.create({
+      const message = await this.models.Message.create({
         ...messageData,
         ticketId: ticket.id
       });
@@ -323,11 +308,9 @@ class TicketService {
         threadId: emailData.threadId
       });
 
-      const models = await getModels();
-      
       // Verificar si ya existe un ticket para este thread
       if (emailData.threadId) {
-        const existingTicket = await models.Ticket.findOne({
+        const existingTicket = await this.models.Ticket.findOne({
           where: { gmailThreadId: emailData.threadId }
         });
 
@@ -342,7 +325,7 @@ class TicketService {
       }
 
       // Buscar o crear el customer basado en el email
-      const [customer] = await models.Customer.findOrCreate({
+      const [customer] = await this.models.Customer.findOrCreate({
         where: { email: emailData.from },
         defaults: {
           name: emailData.from.split('@')[0], // Nombre temporal
@@ -351,7 +334,7 @@ class TicketService {
       });
 
       // Crear el ticket
-      const ticket = await models.Ticket.create({
+      const ticket = await this.models.Ticket.create({
         subject: emailData.subject,
         category: 'email', // Categoría por defecto para emails
         customerId: customer.id,
@@ -363,7 +346,7 @@ class TicketService {
       });
 
       // Crear el primer mensaje
-      await models.Message.create({
+      await this.models.Message.create({
         ticketId: ticket.id,
         content: emailData.content,
         type: 'email',
@@ -392,4 +375,5 @@ class TicketService {
   }
 }
 
+// Exportar una única instancia
 module.exports = new TicketService();

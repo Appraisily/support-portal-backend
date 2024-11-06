@@ -4,6 +4,8 @@ const secretManager = require('../utils/secretManager');
 const logger = require('../utils/logger');
 const GmailService = require('../services/GmailService');
 
+const gmailService = new GmailService();
+
 async function setup() {
   const startTime = Date.now();
   try {
@@ -20,30 +22,12 @@ async function setup() {
       throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
     }
 
-    // Inicializar GmailService
-    const gmailService = new GmailService();
+    // Usar la instancia existente
     await gmailService.ensureInitialized();
-
-    // Configurar watch
-    const response = await gmailService.gmail.users.watch({
-      userId: gmailService.userEmail,
-      requestBody: {
-        labelIds: ['INBOX'],
-        topicName: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`,
-        labelFilterAction: 'include'
-      }
-    });
-
-    if (!response?.data?.historyId) {
-      throw new Error('Invalid response from Gmail watch setup');
-    }
-
-    // Guardar historyId inicial
-    await gmailService.updateLastHistoryId(response.data.historyId);
+    await gmailService.setupGmailWatch();
 
     logger.info('Gmail watch setup completed', {
-      historyId: response.data.historyId,
-      expiration: response.data.expiration,
+      historyId: gmailService.lastHistoryId,
       setupTime: Date.now() - startTime
     });
   } catch (error) {

@@ -7,13 +7,21 @@ const { getModels } = require('../config/database');
 
 class GmailService {
   constructor() {
-    this.userEmail = 'info@appraisily.com';
+    if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET) {
+      throw new Error('Gmail credentials not configured');
+    }
+    
+    this.userEmail = process.env.GMAIL_USER_EMAIL || 'info@appraisily.com';
     this.gmail = null;
     this.initialized = false;
     this.initPromise = null;
     this.models = null;
     this.lastHistoryId = null;
-    logger.info(`Creating Gmail service instance for: ${this.userEmail}`);
+
+    logger.info('Creating Gmail service instance', {
+      userEmail: this.userEmail,
+      environment: process.env.NODE_ENV
+    });
   }
 
   async setupGmail() {
@@ -433,18 +441,19 @@ class GmailService {
   async processNewEmails(notification) {
     const startTime = Date.now();
     try {
-      await this.ensureInitialized();
+      if (!this.initialized) {
+        await this.ensureInitialized();
+      }
+
+      if (!notification?.historyId) {
+        throw new Error('Invalid notification: missing historyId');
+      }
 
       logger.info('Processing new emails', {
         notification,
         hasModels: !!this.models,
         hasSettingModel: !!this.models?.Setting
       });
-
-      if (!notification?.historyId || !notification?.emailAddress) {
-        logger.warn('Invalid notification data', { notification });
-        return { processed: 0, tickets: 0, error: 'Invalid notification data' };
-      }
 
       const currentHistoryId = parseInt(notification.historyId);
       const lastHistoryId = await this.getLastHistoryId();
@@ -510,10 +519,8 @@ class GmailService {
       logger.error('Error processing new emails', {
         error: error.message,
         stack: error.stack,
-        processingTime: Date.now() - startTime,
         notification,
-        hasModels: !!this.models,
-        hasSettingModel: !!this.models?.Setting
+        processingTime: Date.now() - startTime
       });
       throw error;
     }
@@ -695,6 +702,5 @@ class GmailService {
   }
 }
 
-// Crear y exportar una única instancia
-const instance = new GmailService();
-module.exports = instance;
+// Exportar una instancia singleton
+module.exports = GmailService;
