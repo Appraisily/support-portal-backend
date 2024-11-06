@@ -60,8 +60,20 @@ exports.handleWebhook = async (req, res) => {
         Buffer.from(req.body.message.data, 'base64').toString()
       );
 
-      await GmailService.ensureInitialized();
+      // Verificar si es una notificación inicial de watch
+      if (notification.historyId === process.env.LAST_HISTORY_ID) {
+        logger.info('Ignoring initial watch notification');
+        return res.status(200).send('OK');
+      }
 
+      // Verificar si es una notificación de configuración
+      if (!notification.emailAddress || !notification.historyId) {
+        logger.info('Received watch setup confirmation:', notification);
+        return res.status(200).send('OK');
+      }
+
+      // Procesar notificación real de email
+      await GmailService.ensureInitialized();
       if (await GmailService.isNotificationProcessed(notification.historyId)) {
         logger.info(`Skipping processed notification: ${notification.historyId}`);
         return res.status(200).send('OK');

@@ -123,6 +123,13 @@ class GmailService {
             }
           });
 
+          // Guardar el historyId inicial
+          if (response.data.historyId) {
+            process.env.LAST_HISTORY_ID = response.data.historyId;
+            await this.updateLastHistoryId(response.data.historyId);
+            logger.info('Saved initial history ID:', response.data.historyId);
+          }
+
           logger.info('Gmail watch setup successful:', response.data);
           return response.data;
         } catch (error) {
