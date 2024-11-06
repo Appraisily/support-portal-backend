@@ -10,6 +10,7 @@ class GmailService {
     this.gmail = null;
     this.initialized = false;
     this.initPromise = null;
+    this.lastHistoryId = null;
     logger.info(`Creating Gmail service instance for: ${this.userEmail}`);
   }
 
@@ -83,17 +84,7 @@ class GmailService {
   async setupGmailWatch() {
     try {
       logger.info('Setting up Gmail watch...');
-      
-      // Asegurarnos de que los secretos están cargados
-      if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
-        logger.info('Loading secrets before setting up watch...');
-        await secretManager.loadSecrets();
-      }
-
-      // Asegurarnos de que Gmail está inicializado
-      if (!this.gmail) {
-        await this.setupGmail();
-      }
+      await this.ensureInitialized();
 
       const topicName = `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`;
       logger.info(`Using Pub/Sub topic: ${topicName}`);
@@ -108,53 +99,28 @@ class GmailService {
         logger.warn('No existing watch to stop or error stopping watch:', error.message);
       }
 
-      // Configurar nuevo watch con retry
-      const maxRetries = 3;
-      let lastError;
-
-      for (let i = 0; i < maxRetries; i++) {
-        try {
-          const response = await this.gmail.users.watch({
-            userId: this.userEmail,
-            requestBody: {
-              labelIds: ['INBOX'],
-              topicName: topicName,
-              labelFilterAction: 'include'
-            }
-          });
-
-          // Guardar el historyId inicial
-          if (response.data.historyId) {
-            process.env.LAST_HISTORY_ID = response.data.historyId;
-            await this.updateLastHistoryId(response.data.historyId);
-            logger.info('Saved initial history ID:', response.data.historyId);
-          }
-
-          logger.info('Gmail watch setup successful:', response.data);
-          return response.data;
-        } catch (error) {
-          lastError = error;
-          logger.warn(`Watch setup attempt ${i + 1} failed:`, {
-            error: error.message,
-            response: error.response?.data
-          });
-          
-          if (i < maxRetries - 1) {
-            const delay = Math.pow(2, i) * 1000;
-            logger.info(`Retrying in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
+      // Configurar nuevo watch
+      const response = await this.gmail.users.watch({
+        userId: this.userEmail,
+        requestBody: {
+          labelIds: ['INBOX'],
+          topicName: topicName,
+          labelFilterAction: 'include'
         }
+      });
+
+      // Guardar el historyId en memoria
+      if (response.data.historyId) {
+        this.lastHistoryId = response.data.historyId;
+        process.env.LAST_HISTORY_ID = response.data.historyId;
+        logger.info('Saved initial history ID:', response.data.historyId);
       }
 
-      throw lastError;
+      logger.info('Gmail watch setup successful:', response.data);
+      return response.data;
 
     } catch (error) {
-      logger.error('Failed to setup Gmail watch:', {
-        error: error.message,
-        stack: error.stack,
-        details: error.response?.data
-      });
+      logger.error('Failed to setup Gmail watch:', error);
       throw error;
     }
   }
@@ -422,17 +388,8 @@ class GmailService {
           await secretManager.loadSecrets();
         }
 
-        // 2. Inicializar aplicación si es necesario
-        if (!appState.initialized) {
-          logger.info('Initializing application in Gmail service...');
-          await appState.initialize();
-        }
-
-        // 3. Configurar Gmail si es necesario
-        if (!this.gmail) {
-          logger.info('Setting up Gmail client...');
-          await this.setupGmail();
-        }
+        // 2. Inicializar Gmail
+        await this.setupGmail();
 
         this.initialized = true;
         logger.info('Gmail service fully initialized');
@@ -546,28 +503,19 @@ class GmailService {
   }
 
   async isNotificationProcessed(historyId) {
-    try {
-      // Asegurar inicialización antes de verificar
-      await this.ensureInitialized();
-      
-      const models = await appState.getModels();
-      const processedNotification = await models.Setting.findOne({
-        where: { 
-          key: 'processed_notification',
-          value: historyId.toString()
-        }
-      });
-      
-      if (processedNotification) {
-        logger.debug(`Notification ${historyId} already processed`);
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      logger.error('Error checking processed notification:', error);
-      return false;
+    // Si es el historyId inicial, ignorarlo
+    if (historyId === this.lastHistoryId) {
+      logger.info('Ignoring initial history ID notification');
+      return true;
     }
+    
+    // Si es un historyId anterior al último conocido, ignorarlo
+    if (this.lastHistoryId && parseInt(historyId) <= parseInt(this.lastHistoryId)) {
+      logger.info('Ignoring old history ID notification');
+      return true;
+    }
+
+    return false;
   }
 
   async markNotificationAsProcessed(historyId) {
