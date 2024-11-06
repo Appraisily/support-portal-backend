@@ -272,72 +272,69 @@ class GmailService {
     }
   }
 
-  async handleNewEmail(emailId) {
+  async handleNewEmail(emailData) {
     try {
-      logger.info('=== INICIO CREACIÓN TICKET ===');
-      logger.info('1. Obteniendo detalles del email:', emailId);
-
-      const email = await this.gmail.users.messages.get({
-        userId: 'me',
-        id: emailId
-      });
-
-      const headers = email.data.payload.headers;
-      const to = headers.find(h => h.name === 'To')?.value;
-      
-      logger.info('2. Verificando destinatario:', { to });
-      
-      if (!to?.includes('info@appraisily.com')) {
-        logger.info('Email no dirigido a info@appraisily.com, ignorando');
-        return;
-      }
-
-      const subject = headers.find(h => h.name === 'Subject')?.value;
-      const from = headers.find(h => h.name === 'From')?.value;
-      const content = this.extractEmailContent(email.data.payload);
-
-      logger.info('3. Datos extraídos:', { subject, from });
-
+      logger.info('Processing new email:', { subject: emailData.subject });
       const models = await appState.getModels();
-      
-      const emailMatch = from.match(/<(.+?)>/);
-      const senderEmail = emailMatch ? emailMatch[1] : from;
 
-      logger.info('4. Buscando cliente:', { senderEmail });
-      
-      let customer = await models.Customer.findOne({ 
-        where: { email: senderEmail } 
+      // Buscar si existe un ticket para este thread
+      const existingTicket = await models.Ticket.findOne({
+        where: {
+          gmailThreadId: emailData.threadId
+        },
+        include: [{
+          model: models.Message,
+          as: 'messages',
+          order: [['createdAt', 'DESC']]
+        }]
       });
 
-      if (!customer) {
-        logger.info('5. Cliente no encontrado, creando nuevo');
-        customer = await models.Customer.create({
-          email: senderEmail,
-          name: from.split('<')[0].trim()
+      if (existingTicket) {
+        logger.info('Found existing ticket:', existingTicket.id);
+        
+        // Añadir nuevo mensaje al ticket existente
+        await models.Message.create({
+          ticketId: existingTicket.id,
+          content: emailData.content,
+          from: emailData.from,
+          gmailMessageId: emailData.messageId
         });
+
+        // Actualizar timestamp de última actividad
+        await existingTicket.update({
+          lastMessageAt: new Date()
+        });
+
+        return existingTicket;
       }
 
-      logger.info('6. Creando ticket');
+      // Crear nuevo ticket si no existe
+      const customer = await this.findOrCreateCustomer(emailData.from);
+      
       const ticket = await models.Ticket.create({
-        subject: subject || 'Sin asunto',
-        status: 'open',
+        subject: emailData.subject,
+        status: 'open',  // Siempre 'open' para nuevos tickets
         priority: 'medium',
-        category: 'email',
+        category: 'general',
         customerId: customer.id,
-        gmailThreadId: email.data.threadId
+        gmailThreadId: emailData.threadId,
+        gmailMessageId: emailData.messageId,
+        lastMessageAt: new Date()
       });
 
-      // Crear mensaje inicial
+      // Crear el primer mensaje
       await models.Message.create({
-        content,
         ticketId: ticket.id,
-        author: 'customer'
+        content: emailData.content,
+        from: emailData.from,
+        gmailMessageId: emailData.messageId
       });
 
-      logger.info(`New ticket created from email: ${ticket.id}`);
+      logger.info('Created new ticket:', ticket.id);
       return ticket;
+
     } catch (error) {
-      logger.error('Error processing new email:', error);
+      logger.error('Error handling new email:', error);
       throw error;
     }
   }

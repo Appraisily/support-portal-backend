@@ -10,7 +10,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     status: {
-      type: DataTypes.ENUM('open', 'hold', 'closed'),
+      type: DataTypes.ENUM('open', 'in_progress', 'closed'),
       defaultValue: 'open'
     },
     priority: {
@@ -28,9 +28,30 @@ module.exports = (sequelize, DataTypes) => {
     assignedToId: {
       type: DataTypes.UUID,
       allowNull: true
+    },
+    gmailThreadId: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    gmailMessageId: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    lastMessageAt: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
     }
   }, {
-    timestamps: true
+    timestamps: true,
+    indexes: [
+      {
+        fields: ['gmailThreadId']
+      },
+      {
+        fields: ['gmailMessageId']
+      }
+    ]
   });
 
   Ticket.associate = function(models) {
