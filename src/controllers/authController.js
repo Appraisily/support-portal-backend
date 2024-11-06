@@ -1,13 +1,22 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const { getModels } = require('../config/database');
+const bcrypt = require('bcrypt');
 
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
     
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
+    }
+
     logger.info('Login attempt', {
       email,
-      hasCredentials: !!password,
+      hasCredentials: true,
       timestamp: new Date().toISOString()
     });
 
@@ -64,34 +73,26 @@ exports.login = async (req, res, next) => {
   }
 };
 
-exports.validateToken = async (req, res, next) => {
+exports.logout = async (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
+    // Implementar lógica de logout si es necesario
+    // Por ejemplo, invalidar el token en una lista negra
+    logger.info('User logged out', {
+      userId: req.user?.id
+    });
     
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided'
-      });
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-
-    logger.info('Token validated', {
-      userId: decoded.id,
-      role: decoded.role
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
     });
-
-    next();
   } catch (error) {
-    logger.error('Token validation error', {
+    logger.error('Logout error', {
       error: error.message,
-      token: req.headers.authorization?.substring(0, 20) + '...'
+      userId: req.user?.id
     });
-    res.status(401).json({
+    res.status(500).json({
       success: false,
-      message: 'Invalid token'
+      message: 'Error during logout'
     });
   }
 };

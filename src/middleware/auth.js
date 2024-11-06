@@ -1,36 +1,34 @@
 const jwt = require('jsonwebtoken');
-const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
 
-exports.authenticate = async (req, res, next) => {
+exports.validateAuth = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    logger.info('Auth headers:', { 
-      hasAuth: !!authHeader,
-      headerValue: authHeader
-    });
+    const token = req.headers.authorization?.split(' ')[1];
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new ApiError(401, 'Authentication required');
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided'
+      });
     }
-
-    const token = authHeader.split(' ')[1];
-    logger.info('Verifying token with secret:', { 
-      hasToken: !!token,
-      hasSecret: !!process.env.JWT_SECRET
-    });
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    logger.info('Token verified successfully:', { userId: decoded.id });
-    
     req.user = decoded;
+
+    logger.info('Token validated', {
+      userId: decoded.id,
+      role: decoded.role
+    });
+
     next();
   } catch (error) {
-    logger.error('Authentication error:', error);
-    if (error.name === 'JsonWebTokenError') {
-      next(new ApiError(401, 'Invalid token'));
-    } else {
-      next(error);
-    }
+    logger.error('Token validation error', {
+      error: error.message,
+      token: req.headers.authorization?.substring(0, 20) + '...'
+    });
+    res.status(401).json({
+      success: false,
+      message: 'Invalid token'
+    });
   }
 };
