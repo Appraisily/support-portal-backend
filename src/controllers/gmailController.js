@@ -6,6 +6,13 @@ const logger = require('../utils/logger');
 exports.handleWebhook = async (req, res, next) => {
   try {
     logger.info('=== INICIO WEBHOOK GMAIL ===');
+    
+    // Asegurarse de que la aplicación está inicializada
+    if (!appState.initialized) {
+      logger.info('Initializing application for webhook');
+      await appState.initialize();
+    }
+
     logger.info('1. Webhook recibido:', { 
       body: req.body,
       headers: req.headers 
@@ -33,8 +40,15 @@ exports.handleWebhook = async (req, res, next) => {
     if (!lastHistoryId || notification.historyId > lastHistoryId) {
       logger.info('5. Procesando nuevos emails...');
       await GmailService.processNewEmails(notification);
+      
       logger.info('6. Actualizando historyId...');
-      await GmailService.updateLastHistoryId(notification.historyId);
+      try {
+        await GmailService.updateLastHistoryId(notification.historyId);
+        logger.info('HistoryId actualizado correctamente');
+      } catch (error) {
+        logger.error('Error actualizando historyId:', error);
+        // Continuar con la respuesta aunque falle la actualización
+      }
     } else {
       logger.warn('5. Saltando notificación - ya procesada');
     }

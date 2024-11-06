@@ -459,6 +459,12 @@ class GmailService {
 
   async updateLastHistoryId(historyId) {
     try {
+      // Asegurarse de que la aplicación está inicializada
+      if (!appState.initialized) {
+        logger.info('Initializing application before updating historyId');
+        await appState.initialize();
+      }
+
       const models = await appState.getModels();
       await models.Setting.upsert({
         key: 'lastGmailHistoryId',
@@ -467,6 +473,7 @@ class GmailService {
       logger.info('Updated last history ID:', historyId);
     } catch (error) {
       logger.error('Error updating last history ID:', error);
+      throw error; // Propagar el error para mejor manejo
     }
   }
 }
