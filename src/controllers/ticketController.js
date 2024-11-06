@@ -3,31 +3,47 @@ const logger = require('../utils/logger');
 
 exports.listTickets = async (req, res, next) => {
   try {
-    const { status, priority, page = 1, limit = 10 } = req.query;
-    
-    logger.info('Listing tickets', {
+    const { 
+      status, 
+      priority, 
+      page, 
+      limit, 
+      sort, 
+      order 
+    } = req.query;
+
+    logger.info('Listing tickets request:', {
       filters: { status, priority },
       pagination: { page, limit },
+      sorting: { sort, order },
       userId: req.user?.id
     });
 
     const result = await TicketService.listTickets(
-      { status, priority },
+      { status,
+        priority,
+        sort,
+        order
+      },
       { page, limit }
     );
 
-    logger.info('Tickets retrieved', {
-      totalTickets: result.total,
-      currentPage: result.page,
-      ticketsReturned: result.tickets.length
+    logger.info('Tickets retrieved successfully:', {
+      totalRecords: result.pagination.total,
+      currentPage: result.pagination.page,
+      totalPages: result.pagination.totalPages,
+      returnedRecords: result.tickets.length
     });
 
     res.json({
-      tickets: result.tickets,
-      pagination: {
-        total: result.total,
-        page: result.page,
-        totalPages: result.totalPages
+      success: true,
+      data: {
+        tickets: result.tickets,
+        pagination: {
+          total: result.pagination.total,
+          page: result.pagination.page,
+          totalPages: result.pagination.totalPages
+        }
       }
     });
   } catch (error) {

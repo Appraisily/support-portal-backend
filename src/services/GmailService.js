@@ -3,6 +3,7 @@ const logger = require('../utils/logger');
 const appState = require('../utils/singleton');
 const { Op } = require('sequelize');
 const secretManager = require('../utils/secretManager');
+const { getModels } = require('../config/database');
 
 class GmailService {
   constructor() {
@@ -10,7 +11,7 @@ class GmailService {
     this.gmail = null;
     this.initialized = false;
     this.initPromise = null;
-    this.lastHistoryId = null;
+    this.models = null;
     logger.info(`Creating Gmail service instance for: ${this.userEmail}`);
   }
 
@@ -377,57 +378,72 @@ class GmailService {
   }
 
   async ensureInitialized() {
-    if (!this.initialized) {
-      logger.info('Gmail service not initialized, setting up...');
-      await this.setupGmail();
+    if (this.initialized && this.models) {
+      return true;
     }
 
-    if (!this.gmail) {
-      logger.error('Gmail client not available after initialization');
-      throw new Error('Gmail client not available');
+    if (this.initPromise) {
+      return this.initPromise;
     }
 
-    // Verificar que podemos acceder a Gmail
-    try {
-      const profile = await this.gmail.users.getProfile({
-        userId: 'me'
-      });
-      logger.info('Gmail access verified:', {
-        email: profile.data.emailAddress,
-        messagesTotal: profile.data.messagesTotal,
-        threadsTotal: profile.data.threadsTotal
-      });
-    } catch (error) {
-      logger.error('Gmail access verification failed:', {
-        error: error.message,
-        stack: error.stack
-      });
-      throw error;
-    }
+    this.initPromise = (async () => {
+      try {
+        // Obtener modelos
+        this.models = await getModels();
+        
+        if (!this.models?.Setting) {
+          throw new Error('Setting model not available after initialization');
+        }
+
+        // Configurar Gmail
+        await this.setupGmail();
+        
+        this.initialized = true;
+        logger.info('Gmail service initialized successfully', {
+          hasModels: !!this.models,
+          hasGmail: !!this.gmail
+        });
+        
+        return true;
+      } catch (error) {
+        logger.error('Failed to initialize Gmail service', {
+          error: error.message,
+          stack: error.stack
+        });
+        this.initialized = false;
+        this.models = null;
+        throw error;
+      } finally {
+        this.initPromise = null;
+      }
+    })();
+
+    return this.initPromise;
   }
 
   async processNewEmails(notification) {
+    const startTime = Date.now();
     try {
-      const startTime = Date.now();
-      
-      // Validar la notificación
-      if (!notification?.historyId || !notification?.emailAddress) {
-        throw new Error('Invalid notification data');
-      }
-
       await this.ensureInitialized();
-      
-      // Verificar que el historyId es un número válido
-      const currentHistoryId = parseInt(notification.historyId);
-      if (isNaN(currentHistoryId)) {
-        throw new Error('Invalid history ID format');
+
+      logger.info('Processing new emails', {
+        notification,
+        hasModels: !!this.models,
+        hasSettingModel: !!this.models?.Setting
+      });
+
+      if (!notification?.historyId || !notification?.emailAddress) {
+        logger.warn('Invalid notification data', { notification });
+        return { processed: 0, tickets: 0, error: 'Invalid notification data' };
       }
 
+      const currentHistoryId = parseInt(notification.historyId);
       const lastHistoryId = await this.getLastHistoryId();
+
       if (lastHistoryId && currentHistoryId <= lastHistoryId) {
         logger.info('Skipping already processed history ID', {
-          currentHistoryId,
-          lastProcessedHistoryId: lastHistoryId
+          current: currentHistoryId,
+          last: lastHistoryId
         });
         return { processed: 0, tickets: 0, skipped: true };
       }
@@ -482,13 +498,13 @@ class GmailService {
       return result;
 
     } catch (error) {
-      logger.error('Gmail processing error', {
+      logger.error('Error processing new emails', {
         error: error.message,
         stack: error.stack,
-        notification: {
-          historyId: notification?.historyId,
-          emailAddress: notification?.emailAddress
-        }
+        processingTime: Date.now() - startTime,
+        notification,
+        hasModels: !!this.models,
+        hasSettingModel: !!this.models?.Setting
       });
       throw error;
     }
@@ -518,34 +534,47 @@ class GmailService {
 
   async getLastHistoryId() {
     try {
-      const models = await appState.getModels();
-      const setting = await models.Setting.findOne({
-        where: { key: 'lastGmailHistoryId' }
-      });
-      return setting ? parseInt(setting.value) : null;
+      await this.ensureInitialized();
+      
+      if (!this.models?.Setting) {
+        throw new Error('Setting model not available');
+      }
+
+      return await this.models.Setting.getHistoryId();
     } catch (error) {
-      logger.error('Error getting last history ID:', error);
-      return null;
+      logger.error('Error getting last history ID:', {
+        error: error.message,
+        stack: error.stack,
+        hasModels: !!this.models,
+        hasSettingModel: !!this.models?.Setting
+      });
+      throw error;
     }
   }
 
   async updateLastHistoryId(historyId) {
     try {
-      // Asegurarse de que la aplicación está inicializada
-      if (!appState.initialized) {
-        logger.info('Initializing application before updating historyId');
-        await appState.initialize();
+      await this.ensureInitialized();
+      
+      if (!this.models?.Setting) {
+        throw new Error('Setting model not available');
       }
 
-      const models = await appState.getModels();
-      await models.Setting.upsert({
-        key: 'lastGmailHistoryId',
-        value: historyId.toString()
+      await this.models.Setting.updateHistoryId(historyId);
+      
+      logger.info('Updated last history ID:', {
+        historyId,
+        timestamp: new Date().toISOString()
       });
-      logger.info('Updated last history ID:', historyId);
     } catch (error) {
-      logger.error('Error updating last history ID:', error);
-      throw error; // Propagar el error para mejor manejo
+      logger.error('Error updating last history ID:', {
+        error: error.message,
+        stack: error.stack,
+        historyId,
+        hasModels: !!this.models,
+        hasSettingModel: !!this.models?.Setting
+      });
+      throw error;
     }
   }
 
@@ -657,4 +686,6 @@ class GmailService {
   }
 }
 
-module.exports = new GmailService();
+// Crear y exportar una única instancia
+const instance = new GmailService();
+module.exports = instance;

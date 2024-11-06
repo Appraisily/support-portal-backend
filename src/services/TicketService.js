@@ -47,81 +47,40 @@ class TicketService {
     try {
       await this.initialize();
       
+      // Normalizar parámetros
       const { 
         status, 
         priority, 
-        page = 1, 
-        limit = 10, 
         sort = 'createdAt', 
         order = 'DESC' 
-      } = { ...filters, ...pagination };
+      } = filters;
 
-      // Validar parámetros
-      if (page < 1 || limit < 1) {
-        logger.warn('Invalid pagination parameters', { page, limit });
-        throw new ApiError(400, 'Invalid pagination parameters');
-      }
+      const page = Math.max(1, parseInt(pagination.page) || 1);
+      const limit = Math.max(1, Math.min(50, parseInt(pagination.limit) || 10));
 
-      logger.info('Raw listTickets request:', {
-        filters: JSON.stringify(filters),
-        pagination: JSON.stringify(pagination),
-        parsedParams: {
-          status,
-          priority,
-          page,
-          limit,
-          sort,
-          order
+      logger.info('Processing listTickets request:', {
+        normalizedParams: {
+          filters: { status, priority },
+          pagination: { page, limit },
+          sorting: { sort, order }
         }
       });
 
+      // Construir query
       const query = {};
       if (status) query.status = status;
       if (priority) query.priority = priority;
 
       const models = await getModels();
-      
-      // Log del estado de los modelos
-      logger.info('Database models status:', {
-        availableModels: Object.keys(models),
-        modelDetails: {
-          Ticket: {
-            exists: !!models.Ticket,
-            attributes: Object.keys(models.Ticket.rawAttributes || {})
-          },
-          Customer: {
-            exists: !!models.Customer,
-            attributes: Object.keys(models.Customer.rawAttributes || {})
-          },
-          Message: {
-            exists: !!models.Message,
-            attributes: Object.keys(models.Message.rawAttributes || {})
-          }
-        }
-      });
 
-      // Log del estado de la base de datos
-      const dbStats = await Promise.all([
+      // Obtener estadísticas
+      const [ticketCount, customerCount, messageCount] = await Promise.all([
         models.Ticket.count(),
         models.Customer.count(),
         models.Message.count()
       ]);
 
-      logger.info('Database current state:', {
-        counts: {
-          tickets: dbStats[0],
-          customers: dbStats[1],
-          messages: dbStats[2]
-        },
-        query: JSON.stringify(query),
-        sequelizeQuery: {
-          where: query,
-          limit: parseInt(limit),
-          offset: (page - 1) * limit,
-          order: [[sort, order]]
-        }
-      });
-
+      // Ejecutar consulta principal
       const tickets = await models.Ticket.findAndCountAll({
         where: query,
         include: [

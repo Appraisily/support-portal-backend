@@ -1,38 +1,39 @@
 const logger = require('./logger');
-const secretManager = require('./secretManager');
+const { initializeDatabase } = require('../config/database');
 
 class AppState {
   constructor() {
     this.initialized = false;
-    this.initPromise = null;
     this.models = null;
+    this.initPromise = null;
   }
 
   async initialize() {
-    if (this.initialized) return;
-    if (this.initPromise) return this.initPromise;
+    if (this.initialized) {
+      return this.models;
+    }
+
+    if (this.initPromise) {
+      return this.initPromise;
+    }
 
     this.initPromise = (async () => {
       try {
-        logger.info('Starting application initialization');
-
-        // 1. Cargar secretos si es necesario
-        if (process.env.NODE_ENV === 'production') {
-          logger.info('Loading secrets in AppState...');
-          await secretManager.loadSecrets();
-        }
-
-        // 2. Cargar modelos
-        logger.info('Loading database models...');
-        const { models } = await require('../models');
-        this.models = models;
-
+        logger.info('Initializing application state');
+        this.models = await initializeDatabase();
         this.initialized = true;
-        logger.info('Application initialization complete');
+        logger.info('Application state initialized successfully');
+        return this.models;
       } catch (error) {
-        this.initPromise = null;
-        logger.error('Application initialization failed:', error);
+        logger.error('Failed to initialize application state', {
+          error: error.message,
+          stack: error.stack
+        });
+        this.initialized = false;
+        this.models = null;
         throw error;
+      } finally {
+        this.initPromise = null;
       }
     })();
 
@@ -47,6 +48,4 @@ class AppState {
   }
 }
 
-// Exportar una única instancia
-const appState = new AppState();
-module.exports = appState; 
+module.exports = new AppState(); 
