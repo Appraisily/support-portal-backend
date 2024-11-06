@@ -2,17 +2,12 @@ const GmailService = require('../services/GmailService');
 const TicketService = require('../services/TicketService');
 const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
+const { getModels } = require('../config/database');
 
 exports.handleWebhook = async (req, res, next) => {
   try {
     logger.info('=== INICIO WEBHOOK GMAIL ===');
     
-    // Asegurarse de que la aplicación está inicializada
-    if (!appState.initialized) {
-      logger.info('Initializing application for webhook');
-      await appState.initialize();
-    }
-
     logger.info('1. Webhook recibido:', { 
       body: req.body,
       headers: req.headers 
@@ -47,7 +42,6 @@ exports.handleWebhook = async (req, res, next) => {
         logger.info('HistoryId actualizado correctamente');
       } catch (error) {
         logger.error('Error actualizando historyId:', error);
-        // Continuar con la respuesta aunque falle la actualización
       }
     } else {
       logger.warn('5. Saltando notificación - ya procesada');
@@ -60,7 +54,8 @@ exports.handleWebhook = async (req, res, next) => {
       error: error.message,
       stack: error.stack
     });
-    next(error);
+    // Siempre devolver 200 a Google para evitar reintentos
+    res.status(200).json({ success: false, error: error.message });
   }
 };
 
