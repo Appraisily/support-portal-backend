@@ -1,71 +1,51 @@
 // Nuevo archivo para manejar el estado global
 const logger = require('./logger');
 
-class ApplicationState {
+class AppState {
   constructor() {
     this.initialized = false;
-    this.initializationPromise = null;
+    this.initPromise = null;
     this.models = null;
-    this.gmailService = null;
-    logger.info('Creating ApplicationState singleton');
   }
 
   async initialize() {
-    if (this.initialized) {
-      logger.info('Application already initialized');
-      return;
-    }
+    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
 
-    // Evitar múltiples inicializaciones simultáneas
-    if (this.initializationPromise) {
-      logger.info('Initialization already in progress, waiting...');
-      return this.initializationPromise;
-    }
+    this.initPromise = (async () => {
+      try {
+        logger.info('Starting application initialization');
 
-    logger.info('Starting application initialization');
-    this.initializationPromise = this._initialize();
-    
-    try {
-      await this.initializationPromise;
-      this.initialized = true;
-      logger.info('Application initialization completed');
-    } catch (error) {
-      logger.error('Application initialization failed:', error);
-      this.initializationPromise = null;
-      throw error;
-    }
+        // 1. Cargar secretos si es necesario
+        if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
+          logger.info('Loading secrets in AppState...');
+          await secretManager.loadSecrets();
+        }
+
+        // 2. Cargar modelos
+        logger.info('Loading database models...');
+        const { models } = await require('../models');
+        this.models = models;
+
+        this.initialized = true;
+        logger.info('Application initialization complete');
+      } catch (error) {
+        this.initPromise = null;
+        logger.error('Application initialization failed:', error);
+        throw error;
+      }
+    })();
+
+    return this.initPromise;
   }
 
-  async _initialize() {
-    const { loadSecrets } = require('./secretManager');
-    const { getModels } = require('../config/database');
-    const GmailService = require('../services/GmailService');
-
-    // Cargar secretos
-    await loadSecrets();
-
-    // Inicializar modelos
-    this.models = await getModels();
-
-    // Inicializar Gmail
-    this.gmailService = GmailService;
-    await this.gmailService.setupGmail();
-  }
-
-  getModels() {
+  async getModels() {
     if (!this.initialized) {
-      throw new Error('Application not initialized');
+      await this.initialize();
     }
     return this.models;
-  }
-
-  getGmailService() {
-    if (!this.initialized) {
-      throw new Error('Application not initialized');
-    }
-    return this.gmailService;
   }
 }
 
 // Exportar una única instancia
-module.exports = new ApplicationState(); 
+module.exports = new AppState(); 

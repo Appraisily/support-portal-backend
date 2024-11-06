@@ -44,27 +44,35 @@ exports.handleWebhook = async (req, res) => {
       return res.status(200).send('OK');
     }
 
-    if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
-      logger.info('Loading secrets before processing webhook...');
-      await secretManager.loadSecrets();
+    try {
+      // Inicializar todo en orden
+      if (!appState.initialized) {
+        logger.info('Initializing application before processing webhook...');
+        await appState.initialize();
+      }
+
+      if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
+        logger.info('Loading secrets before processing webhook...');
+        await secretManager.loadSecrets();
+      }
+
+      const notification = JSON.parse(
+        Buffer.from(req.body.message.data, 'base64').toString()
+      );
+
+      await GmailService.ensureInitialized();
+
+      if (await GmailService.isNotificationProcessed(notification.historyId)) {
+        logger.info(`Skipping processed notification: ${notification.historyId}`);
+        return res.status(200).send('OK');
+      }
+
+      await GmailService.processNewEmails(notification);
+      res.status(200).send('OK');
+    } catch (initError) {
+      logger.error('Initialization error:', initError);
+      return res.status(200).send('Initialization error');
     }
-
-    if (!appState.initialized) {
-      logger.info('Initializing application before processing webhook...');
-      await appState.initialize();
-    }
-
-    const notification = JSON.parse(
-      Buffer.from(req.body.message.data, 'base64').toString()
-    );
-
-    if (await GmailService.isNotificationProcessed(notification.historyId)) {
-      logger.info(`Skipping processed notification: ${notification.historyId}`);
-      return res.status(200).send('OK');
-    }
-
-    await GmailService.processNewEmails(notification);
-    res.status(200).send('OK');
 
   } catch (error) {
     logger.error('Webhook error:', error);
