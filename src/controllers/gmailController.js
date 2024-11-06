@@ -1,6 +1,37 @@
 const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
 
+exports.testConnection = async (req, res) => {
+  try {
+    await GmailService.testConnection();
+    res.json({ status: 'ok' });
+  } catch (error) {
+    logger.error('Test connection failed:', error);
+    res.status(500).json({ error: 'Connection test failed' });
+  }
+};
+
+exports.syncThread = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await GmailService.syncThread(id);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    logger.error('Thread sync failed:', error);
+    res.status(500).json({ error: 'Thread sync failed' });
+  }
+};
+
+exports.setupWatch = async (req, res) => {
+  try {
+    await GmailService.setupGmailWatch();
+    res.json({ status: 'ok' });
+  } catch (error) {
+    logger.error('Watch setup failed:', error);
+    res.status(500).json({ error: 'Watch setup failed' });
+  }
+};
+
 exports.handleWebhook = async (req, res) => {
   try {
     const clientIP = req.headers['x-forwarded-for'] || req.ip;
