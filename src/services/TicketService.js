@@ -44,16 +44,23 @@ class TicketService {
       if (status) query.status = status;
       if (priority) query.priority = priority;
 
-      logger.info('Getting models...');
-      const models = await getModels();
-
-      logger.info('Listing tickets with filters:', {
-        filters,
-        pagination,
-        query,
-        includeModels: models.Customer ? true : false,
-        includeMessages: models.Message ? true : false
+      logger.info('Listing tickets:', {
+        filters: JSON.stringify(filters),
+        pagination: JSON.stringify(pagination),
+        query: JSON.stringify(query)
       });
+
+      const models = await getModels();
+      
+      // Verificar que tenemos todos los modelos necesarios
+      if (!models.Customer || !models.Message) {
+        logger.error('Missing required models:', {
+          hasCustomer: !!models.Customer,
+          hasMessage: !!models.Message,
+          availableModels: Object.keys(models)
+        });
+        throw new Error('Required models not available');
+      }
 
       const tickets = await models.Ticket.findAndCountAll({
         where: query,
@@ -75,11 +82,12 @@ class TicketService {
         offset: (page - 1) * limit
       });
 
-      logger.info('Tickets found:', {
-        total: tickets.count,
-        returned: tickets.rows.length,
-        hasCustomers: tickets.rows.some(t => t.customer),
-        hasMessages: tickets.rows.some(t => t.messages?.length > 0)
+      logger.info('Query results:', {
+        totalTickets: tickets.count,
+        returnedTickets: tickets.rows.length,
+        ticketIds: tickets.rows.map(t => t.id),
+        customersFound: tickets.rows.filter(t => t.customer).length,
+        messagesFound: tickets.rows.reduce((acc, t) => acc + (t.messages?.length || 0), 0)
       });
 
       return {
@@ -89,7 +97,12 @@ class TicketService {
         totalPages: Math.ceil(tickets.count / limit)
       };
     } catch (error) {
-      logger.error('Error listing tickets:', error);
+      logger.error('Error listing tickets:', {
+        error: error.message,
+        stack: error.stack,
+        filters: JSON.stringify(filters),
+        pagination: JSON.stringify(pagination)
+      });
       throw error;
     }
   }
@@ -155,6 +168,67 @@ class TicketService {
     });
     
     return message;
+  }
+
+  async createTicketFromEmail(emailData) {
+    try {
+      logger.info('Creating ticket from email:', {
+        subject: emailData.subject,
+        from: emailData.from,
+        hasContent: !!emailData.content,
+        threadId: emailData.threadId
+      });
+
+      const models = await getModels();
+      
+      // Buscar o crear el customer basado en el email
+      const [customer] = await models.Customer.findOrCreate({
+        where: { email: emailData.from },
+        defaults: {
+          name: emailData.from.split('@')[0], // Nombre temporal
+          email: emailData.from
+        }
+      });
+
+      // Crear el ticket
+      const ticket = await models.Ticket.create({
+        subject: emailData.subject,
+        category: 'email', // Categoría por defecto para emails
+        customerId: customer.id,
+        status: 'open',
+        priority: 'medium',
+        gmailThreadId: emailData.threadId,
+        gmailMessageId: emailData.messageId,
+        lastMessageAt: new Date()
+      });
+
+      // Crear el primer mensaje
+      await models.Message.create({
+        ticketId: ticket.id,
+        content: emailData.content,
+        type: 'email',
+        direction: 'inbound',
+        metadata: {
+          gmailMessageId: emailData.messageId,
+          gmailThreadId: emailData.threadId
+        }
+      });
+
+      logger.info('Ticket created successfully:', {
+        ticketId: ticket.id,
+        customerId: customer.id,
+        threadId: emailData.threadId
+      });
+
+      return ticket;
+    } catch (error) {
+      logger.error('Error creating ticket from email:', {
+        error: error.message,
+        stack: error.stack,
+        emailData: JSON.stringify(emailData)
+      });
+      throw error;
+    }
   }
 }
 

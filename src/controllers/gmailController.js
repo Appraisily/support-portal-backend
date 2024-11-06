@@ -41,8 +41,10 @@ exports.handleWebhook = async (req, res) => {
     
     logger.info('Webhook request received:', {
       ip: clientIP,
-      headers: req.headers,
-      hasData: !!req.body?.message?.data
+      method: req.method,
+      path: req.path,
+      headers: JSON.stringify(req.headers),
+      body: JSON.stringify(req.body)
     });
 
     if (!googleIPs.some(ip => clientIP.startsWith(ip))) {
@@ -52,7 +54,9 @@ exports.handleWebhook = async (req, res) => {
 
     // Decodificar y validar la notificación
     if (!req.body?.message?.data) {
-      logger.warn('Missing message data in webhook request');
+      logger.warn('Missing message data in webhook request', {
+        body: JSON.stringify(req.body)
+      });
       return res.status(200).send('OK');
     }
 
@@ -63,18 +67,23 @@ exports.handleWebhook = async (req, res) => {
     logger.info('Decoded webhook notification:', {
       historyId: notification.historyId,
       emailAddress: notification.emailAddress,
-      raw: notification,
-      decodedData: req.body.message.data
+      notification: JSON.stringify(notification),
+      rawData: req.body.message.data
     });
 
     // Si es una notificación de configuración inicial, solo logueamos y OK
     if (!notification.emailAddress || !notification.historyId) {
-      logger.info('Received watch setup confirmation:', notification);
+      logger.info('Received watch setup confirmation:', {
+        notification: JSON.stringify(notification)
+      });
       return res.status(200).send('OK');
     }
 
     // Asegurarnos de que la app está inicializada
-    logger.info('Initializing application before processing webhook...');
+    logger.info('Initializing application before processing webhook...', {
+      historyId: notification.historyId,
+      emailAddress: notification.emailAddress
+    });
     await appState.initialize();
 
     // Solo procesamos si parece una notificación real de email
@@ -85,7 +94,7 @@ exports.handleWebhook = async (req, res) => {
       emailsProcessed: result?.processed || 0,
       ticketsCreated: result?.tickets || 0,
       historyId: notification.historyId,
-      result: result
+      result: JSON.stringify(result)
     });
 
     res.status(200).send('OK');
@@ -94,8 +103,8 @@ exports.handleWebhook = async (req, res) => {
     logger.error('Webhook error:', {
       error: error.message,
       stack: error.stack,
-      notification: req.body?.message?.data,
-      rawBody: req.body,
+      notification: JSON.stringify(req.body?.message?.data),
+      rawBody: JSON.stringify(req.body),
       type: error.constructor.name
     });
     res.status(200).send('Error processed');

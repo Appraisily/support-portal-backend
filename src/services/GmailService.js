@@ -263,100 +263,88 @@ class GmailService {
       const senderEmail = emailMatch[1].toLowerCase();
       const senderName = emailData.from.split('<')[0].trim().replace(/"/g, '');
       
-      // Buscar o crear cliente
-      let customer = await models.Customer.findOne({
-        where: { email: senderEmail }
+      // Buscar o crear customer
+      const [customer] = await models.Customer.findOrCreate({
+        where: { email: senderEmail },
+        defaults: {
+          name: senderName,
+          email: senderEmail
+        }
       });
 
-      if (!customer) {
-        logger.info(`Creating new customer for email ${senderEmail}`);
-        customer = await models.Customer.create({
-          name: senderName,
-          email: senderEmail,
-          avatar: await this.getGmailProfilePhoto(senderEmail)
-        });
-      }
-
-      // Procesar attachments si existen
-      const attachments = [];
-      if (emailData.attachments && emailData.attachments.length > 0) {
-        for (const attachment of emailData.attachments) {
-          const savedAttachment = await models.Attachment.create({
-            filename: attachment.filename,
-            mimeType: attachment.mimeType,
-            size: attachment.size,
-            gmailAttachmentId: attachment.attachmentId,
-            customerId: customer.id
-          });
-          attachments.push(savedAttachment);
-        }
-        logger.info(`Processed ${attachments.length} attachments for email`);
-      }
-
-      // Buscar ticket existente
+      // Buscar ticket existente por threadId
       const existingTicket = await models.Ticket.findOne({
         where: { gmailThreadId: emailData.threadId }
       });
 
       if (existingTicket) {
+        logger.info('Adding message to existing ticket:', {
+          ticketId: existingTicket.id,
+          threadId: emailData.threadId
+        });
+
         // Añadir mensaje al ticket existente
         const message = await models.Message.create({
           ticketId: existingTicket.id,
           customerId: customer.id,
           content: emailData.content,
-          from: senderEmail,
-          gmailMessageId: emailData.messageId
+          type: 'email',
+          direction: 'inbound',
+          metadata: {
+            gmailMessageId: emailData.messageId,
+            gmailThreadId: emailData.threadId
+          }
         });
 
-        // Asociar attachments al mensaje
-        if (attachments.length > 0) {
-          await Promise.all(attachments.map(attachment => 
-            models.MessageAttachment.create({
-              messageId: message.id,
-              attachmentId: attachment.id
-            })
-          ));
-        }
-        
-        // Reabrir ticket si estaba cerrado
+        // Actualizar lastMessageAt del ticket
         await existingTicket.update({
-          status: 'open',
           lastMessageAt: new Date()
         });
 
+        return existingTicket;
+
       } else {
+        logger.info('Creating new ticket from email');
+        
         // Crear nuevo ticket
         const ticket = await models.Ticket.create({
           subject: emailData.subject,
-          status: 'open',
+          category: 'email',
           customerId: customer.id,
+          status: 'open',
+          priority: 'medium',
           gmailThreadId: emailData.threadId,
           gmailMessageId: emailData.messageId,
-          category: 'email',
           lastMessageAt: new Date()
         });
 
-        const message = await models.Message.create({
+        // Crear el primer mensaje
+        await models.Message.create({
           ticketId: ticket.id,
           customerId: customer.id,
           content: emailData.content,
-          from: senderEmail,
-          gmailMessageId: emailData.messageId
+          type: 'email',
+          direction: 'inbound',
+          metadata: {
+            gmailMessageId: emailData.messageId,
+            gmailThreadId: emailData.threadId
+          }
         });
 
-        // Asociar attachments al mensaje
-        if (attachments.length > 0) {
-          await Promise.all(attachments.map(attachment => 
-            models.MessageAttachment.create({
-              messageId: message.id,
-              attachmentId: attachment.id
-            })
-          ));
-        }
+        logger.info('New ticket created:', {
+          ticketId: ticket.id,
+          threadId: emailData.threadId
+        });
+
+        return ticket;
       }
 
     } catch (error) {
-      logger.error('Error processing email:', error);
+      logger.error('Error handling new email:', {
+        error: error.message,
+        stack: error.stack,
+        emailData: JSON.stringify(emailData)
+      });
       throw error;
     }
   }
@@ -404,7 +392,11 @@ class GmailService {
 
   async processNewEmails(notification) {
     try {
-      logger.info('Starting to process new emails:', notification);
+      logger.info('Starting to process new emails:', {
+        notification: JSON.stringify(notification),
+        historyId: notification.historyId,
+        emailAddress: notification.emailAddress
+      });
       
       // Asegurar inicialización antes de procesar
       await this.ensureInitialized();
@@ -418,22 +410,30 @@ class GmailService {
       logger.info('History list response:', {
         hasHistory: !!response.data.history,
         historyId: notification.historyId,
-        response: response.data
+        historySize: response.data.history?.length || 0,
+        response: JSON.stringify(response.data)
       });
 
       if (!response.data.history) {
-        logger.info(`No new messages since ${notification.historyId}`);
+        logger.info(`No new messages since ${notification.historyId}`, {
+          historyId: notification.historyId,
+          emailAddress: notification.emailAddress
+        });
         return { processed: 0, tickets: 0 };
       }
 
       const processedCount = await this._processHistoryItems(response.data.history);
-      logger.info(`Processed ${processedCount} new messages`);
+      logger.info(`Processed ${processedCount} new messages`, {
+        processedCount,
+        historyId: notification.historyId,
+        historySize: response.data.history.length
+      });
       
       await this.markNotificationAsProcessed(notification.historyId);
 
       return {
         processed: processedCount,
-        tickets: processedCount, // Asumiendo 1 ticket por mensaje
+        tickets: processedCount,
         historyId: notification.historyId
       };
 
@@ -441,7 +441,7 @@ class GmailService {
       logger.error('Failed to process emails:', {
         error: error.message,
         stack: error.stack,
-        notification: notification,
+        notification: JSON.stringify(notification),
         type: error.constructor.name
       });
       throw error;
@@ -560,6 +560,60 @@ class GmailService {
       logger.debug(`Marked notification ${historyId} as processed`);
     } catch (error) {
       logger.error('Error marking notification as processed:', error);
+      throw error;
+    }
+  }
+
+  async _processHistoryItems(historyItems) {
+    try {
+      let processedCount = 0;
+      
+      for (const history of historyItems) {
+        for (const message of history.messages || []) {
+          // Verificar si ya procesamos este mensaje
+          if (await this.isMessageProcessed(message.id)) {
+            logger.info(`Message ${message.id} already processed, skipping`);
+            continue;
+          }
+
+          // Obtener detalles completos del mensaje
+          const messageDetails = await this.gmail.users.messages.get({
+            userId: 'me',
+            id: message.id,
+            format: 'full'
+          });
+
+          // Extraer datos del email
+          const emailData = {
+            messageId: message.id,
+            threadId: message.threadId,
+            ...this.extractEmailData(messageDetails.data)
+          };
+
+          logger.info('Processing new email:', {
+            messageId: emailData.messageId,
+            subject: emailData.subject,
+            from: emailData.from
+          });
+
+          // Crear o actualizar ticket
+          await this.handleNewEmail(emailData);
+          
+          // Marcar como procesado
+          await this.markMessageAsProcessed(message.id);
+          
+          processedCount++;
+        }
+      }
+
+      logger.info(`Processed ${processedCount} messages from history items`);
+      return processedCount;
+
+    } catch (error) {
+      logger.error('Error processing history items:', {
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }

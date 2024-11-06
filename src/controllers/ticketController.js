@@ -3,42 +3,56 @@ const logger = require('../utils/logger');
 
 exports.listTickets = async (req, res, next) => {
   try {
-    const { status, page = 1, limit = 10 } = req.query;
-    const query = status ? { status } : {};
-
-    logger.info('Listing tickets with query:', { query, page, limit });
-
-    const result = await TicketService.listTickets(query, {
-      page,
-      limit
+    const { status, priority, page = 1, limit = 10 } = req.query;
+    
+    logger.info('Ticket list requested:', {
+      query: JSON.stringify(req.query),
+      user: req.user?.id
     });
 
-    const tickets = result.tickets.map(ticket => ({
-      id: ticket.id,
-      subject: ticket.subject,
-      status: ticket.status,
-      priority: ticket.priority,
-      category: ticket.category,
-      customer: ticket.customer ? {
-        id: ticket.customer.id,
-        name: ticket.customer.name,
-        email: ticket.customer.email
-      } : null,
-      createdAt: ticket.createdAt.toISOString(),
-      lastUpdated: ticket.updatedAt.toISOString(),
-      messages: (ticket.messages || []).map(message => ({
-        id: message.id,
-        content: message.content,
-        createdAt: message.createdAt.toISOString(),
-        author: message.author
-      }))
-    }));
+    const result = await TicketService.listTickets(
+      { status, priority },
+      { page, limit }
+    );
 
-    logger.info('Successfully mapped tickets:', { count: tickets.length });
+    logger.info('Ticket list processed:', {
+      totalTickets: result.total,
+      returnedTickets: result.tickets.length,
+      page: result.page,
+      totalPages: result.totalPages
+    });
 
-    res.json(tickets);
+    res.json({
+      tickets: result.tickets.map(ticket => ({
+        id: ticket.id,
+        subject: ticket.subject,
+        status: ticket.status,
+        priority: ticket.priority,
+        category: ticket.category,
+        customer: ticket.customer ? {
+          id: ticket.customer.id,
+          name: ticket.customer.name,
+          email: ticket.customer.email
+        } : null,
+        lastMessage: ticket.messages?.[0] ? {
+          content: ticket.messages[0].content,
+          createdAt: ticket.messages[0].createdAt
+        } : null,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt
+      })),
+      pagination: {
+        total: result.total,
+        page: result.page,
+        totalPages: result.totalPages
+      }
+    });
   } catch (error) {
-    logger.error('Error in listTickets:', error);
+    logger.error('Error processing ticket list:', {
+      error: error.message,
+      stack: error.stack,
+      query: JSON.stringify(req.query)
+    });
     next(error);
   }
 };
