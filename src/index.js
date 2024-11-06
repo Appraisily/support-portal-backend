@@ -11,19 +11,25 @@ const secretManager = require('./utils/secretManager');
 
 async function startServer() {
   try {
-    // 1. Cargar secretos en producción
+    // 1. Cargar TODOS los secretos primero
     if (process.env.NODE_ENV === 'production') {
       logger.info('Loading secrets...');
       await secretManager.loadSecrets();
       
-      // Verificar que todos los secretos necesarios están cargados
+      // Verificar todos los secretos necesarios
       const requiredEnvVars = [
+        // DB vars
         'DB_USER',
         'DB_PASSWORD',
         'DB_NAME',
         'DB_HOST',
         'DB_PORT',
-        'CLOUD_SQL_CONNECTION_NAME'
+        'CLOUD_SQL_CONNECTION_NAME',
+        // Gmail vars
+        'GMAIL_CLIENT_ID',
+        'GMAIL_CLIENT_SECRET',
+        'GMAIL_REFRESH_TOKEN',
+        'GOOGLE_CLOUD_PROJECT_ID'
       ];
 
       const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -38,7 +44,21 @@ async function startServer() {
     logger.info('Initializing database...');
     await initializeDatabase();
 
-    // 3. Configurar Express y middleware
+    // 3. Inicializar Gmail (ahora que tenemos todos los secretos)
+    if (process.env.NODE_ENV === 'production') {
+      try {
+        logger.info('Initializing Gmail service...');
+        await GmailService.setupGmail();
+        
+        logger.info('Setting up Gmail watch...');
+        await GmailService.setupGmailWatch();
+      } catch (error) {
+        logger.error('Failed to setup Gmail:', error);
+        // No detenemos el servidor por este error
+      }
+    }
+
+    // 4. Configurar Express y resto del servidor
     const app = express();
     app.use(helmet());
     app.use(cors());
@@ -60,22 +80,8 @@ async function startServer() {
       res.status(200).send('OK');
     });
 
-    // 4. Configurar rutas
+    // 5. Configurar rutas
     app.use('/api', routes);
-
-    // 5. Inicializar Gmail en producción
-    if (process.env.NODE_ENV === 'production') {
-      try {
-        logger.info('Initializing Gmail service...');
-        await GmailService.setupGmail();
-        
-        logger.info('Setting up Gmail watch...');
-        await GmailService.setupGmailWatch();
-      } catch (error) {
-        logger.error('Failed to setup Gmail:', error);
-        // No detenemos el servidor por este error
-      }
-    }
 
     // 6. Iniciar servidor HTTP
     const PORT = process.env.PORT || 8080;
