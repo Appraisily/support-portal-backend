@@ -32,7 +32,7 @@ class SecretManager {
       // - DB_* -> Conexión a base de datos
       // - GMAIL_* -> Autenticación con Gmail API
       // - ADMIN_* -> Autenticación de administrador
-      // - JWT_SECRET -> Generación de tokens de sesión
+      // - jwt-secret -> Generación de tokens de sesión (¡OJO! el nombre en Secret Manager es "jwt-secret" en minúsculas con guion!)
       const requiredSecrets = [
         // Secretos para base de datos
         'DB_USER',
@@ -53,8 +53,8 @@ class SecretManager {
         
         // Secreto para JWT
         {
-          secretName: 'JWT_SECRET', // Usado en auth middleware y login
-          envVar: 'JWT_SECRET'
+          secretName: 'jwt-secret',  // ¡IMPORTANTE! Este es el nombre exacto en Secret Manager
+          envVar: 'JWT_SECRET'       // Este es el nombre que usamos en el código
         }
       ];
 
