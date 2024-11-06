@@ -274,73 +274,122 @@ class GmailService {
 
   async handleNewEmail(emailData) {
     try {
-      logger.info('Processing new email:', { subject: emailData.subject });
-      const models = await appState.getModels();
-
-      // Extraer email del remitente
+      const models = await getModels();
+      
+      // Extraer datos del remitente
       const emailMatch = emailData.from.match(/<(.+?)>/) || [null, emailData.from];
       const senderEmail = emailMatch[1].toLowerCase();
+      const senderName = emailData.from.split('<')[0].trim().replace(/"/g, '');
+      
+      // Buscar o crear cliente
+      let customer = await models.Customer.findOne({
+        where: { email: senderEmail }
+      });
 
-      // Buscar ticket existente por threadId
+      if (!customer) {
+        logger.info(`Creating new customer for email ${senderEmail}`);
+        customer = await models.Customer.create({
+          name: senderName,
+          email: senderEmail,
+          avatar: await this.getGmailProfilePhoto(senderEmail)
+        });
+      }
+
+      // Procesar attachments si existen
+      const attachments = [];
+      if (emailData.attachments && emailData.attachments.length > 0) {
+        for (const attachment of emailData.attachments) {
+          const savedAttachment = await models.Attachment.create({
+            filename: attachment.filename,
+            mimeType: attachment.mimeType,
+            size: attachment.size,
+            gmailAttachmentId: attachment.attachmentId,
+            customerId: customer.id
+          });
+          attachments.push(savedAttachment);
+        }
+        logger.info(`Processed ${attachments.length} attachments for email`);
+      }
+
+      // Buscar ticket existente
       const existingTicket = await models.Ticket.findOne({
-        where: {
-          gmailThreadId: emailData.threadId
-        },
-        include: [{
-          model: models.Message,
-          as: 'messages',
-          order: [['createdAt', 'DESC']]
-        }]
+        where: { gmailThreadId: emailData.threadId }
       });
 
       if (existingTicket) {
-        logger.info(`Adding message to existing ticket ${existingTicket.id}`);
-        
-        // Añadir mensaje y actualizar ticket
-        await Promise.all([
-          models.Message.create({
-            ticketId: existingTicket.id,
-            content: emailData.content,
-            from: senderEmail,
-            gmailMessageId: emailData.messageId
-          }),
-          existingTicket.update({
-            status: 'open',  // Siempre reabrir el ticket al recibir una respuesta
-            lastMessageAt: new Date()
-          })
-        ]);
+        // Añadir mensaje al ticket existente
+        const message = await models.Message.create({
+          ticketId: existingTicket.id,
+          customerId: customer.id,
+          content: emailData.content,
+          from: senderEmail,
+          gmailMessageId: emailData.messageId
+        });
 
-        logger.info(`Ticket ${existingTicket.id} reopened due to new response`);
-        return existingTicket;
+        // Asociar attachments al mensaje
+        if (attachments.length > 0) {
+          await Promise.all(attachments.map(attachment => 
+            models.MessageAttachment.create({
+              messageId: message.id,
+              attachmentId: attachment.id
+            })
+          ));
+        }
+        
+        // Reabrir ticket si estaba cerrado
+        await existingTicket.update({
+          status: 'open',
+          lastMessageAt: new Date()
+        });
+
+      } else {
+        // Crear nuevo ticket
+        const ticket = await models.Ticket.create({
+          subject: emailData.subject,
+          status: 'open',
+          customerId: customer.id,
+          gmailThreadId: emailData.threadId,
+          gmailMessageId: emailData.messageId,
+          lastMessageAt: new Date()
+        });
+
+        const message = await models.Message.create({
+          ticketId: ticket.id,
+          customerId: customer.id,
+          content: emailData.content,
+          from: senderEmail,
+          gmailMessageId: emailData.messageId
+        });
+
+        // Asociar attachments al mensaje
+        if (attachments.length > 0) {
+          await Promise.all(attachments.map(attachment => 
+            models.MessageAttachment.create({
+              messageId: message.id,
+              attachmentId: attachment.id
+            })
+          ));
+        }
       }
 
-      // Crear nuevo ticket
-      const customer = await this.findOrCreateCustomer(senderEmail);
-      
-      const ticket = await models.Ticket.create({
-        subject: emailData.subject || '(No subject)',
-        status: 'open',
-        priority: 'medium',
-        category: 'general',
-        customerId: customer.id,
-        gmailThreadId: emailData.threadId,
-        gmailMessageId: emailData.messageId,
-        lastMessageAt: new Date()
-      });
-
-      await models.Message.create({
-        ticketId: ticket.id,
-        content: emailData.content,
-        from: senderEmail,
-        gmailMessageId: emailData.messageId
-      });
-
-      logger.info(`Created new ticket ${ticket.id} for email from ${senderEmail}`);
-      return ticket;
-
     } catch (error) {
-      logger.error('Error handling new email:', error);
+      logger.error('Error processing email:', error);
       throw error;
+    }
+  }
+
+  // Nueva función para obtener foto de perfil
+  async getGmailProfilePhoto(email) {
+    try {
+      const response = await this.gmail.users.getProfile({
+        userId: 'me',
+        email: email
+      });
+      
+      return response.data.photoUrl || null;
+    } catch (error) {
+      logger.warn(`Could not fetch profile photo for ${email}:`, error);
+      return null;
     }
   }
 

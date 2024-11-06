@@ -5,34 +5,36 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
-    name: {
+    filename: {
       type: DataTypes.STRING,
       allowNull: false
     },
-    url: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    type: {
+    mimeType: {
       type: DataTypes.STRING,
       allowNull: false
     },
     size: {
       type: DataTypes.INTEGER,
       allowNull: false
+    },
+    gmailAttachmentId: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    customerId: {
+      type: DataTypes.UUID,
+      allowNull: false
     }
-  }, {
-    timestamps: true
   });
 
-  Attachment.associate = (models) => {
-    Attachment.belongsTo(models.Ticket, {
-      foreignKey: 'ticketId',
-      as: 'ticket'
+  Attachment.associate = function(models) {
+    Attachment.belongsTo(models.Customer, {
+      foreignKey: 'customerId',
+      as: 'customer'
     });
-    Attachment.belongsTo(models.Message, {
-      foreignKey: 'messageId',
-      as: 'message'
+    Attachment.belongsToMany(models.Message, {
+      through: 'MessageAttachment',
+      as: 'messages'
     });
   };
 
