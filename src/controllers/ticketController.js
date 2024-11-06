@@ -5,9 +5,20 @@ exports.listTickets = async (req, res, next) => {
   try {
     const { status, priority, page = 1, limit = 10 } = req.query;
     
-    logger.info('Ticket list requested:', {
+    logger.info('Raw ticket list request:', {
       query: JSON.stringify(req.query),
-      user: req.user?.id
+      headers: JSON.stringify(req.headers),
+      user: req.user ? {
+        id: req.user.id,
+        email: req.user.email,
+        role: req.user.role
+      } : null,
+      params: {
+        status,
+        priority,
+        page,
+        limit
+      }
     });
 
     const result = await TicketService.listTickets(
@@ -15,32 +26,25 @@ exports.listTickets = async (req, res, next) => {
       { page, limit }
     );
 
-    logger.info('Ticket list processed:', {
+    logger.info('Ticket list response prepared:', {
       totalTickets: result.total,
       returnedTickets: result.tickets.length,
-      page: result.page,
-      totalPages: result.totalPages
+      pagination: {
+        page: result.page,
+        totalPages: result.totalPages,
+        limit
+      },
+      sampleTicket: result.tickets[0] ? {
+        id: result.tickets[0].id,
+        subject: result.tickets[0].subject,
+        status: result.tickets[0].status,
+        hasCustomer: !!result.tickets[0].customer,
+        hasMessages: !!result.tickets[0].lastMessage
+      } : 'No tickets found'
     });
 
     res.json({
-      tickets: result.tickets.map(ticket => ({
-        id: ticket.id,
-        subject: ticket.subject,
-        status: ticket.status,
-        priority: ticket.priority,
-        category: ticket.category,
-        customer: ticket.customer ? {
-          id: ticket.customer.id,
-          name: ticket.customer.name,
-          email: ticket.customer.email
-        } : null,
-        lastMessage: ticket.messages?.[0] ? {
-          content: ticket.messages[0].content,
-          createdAt: ticket.messages[0].createdAt
-        } : null,
-        createdAt: ticket.createdAt,
-        updatedAt: ticket.updatedAt
-      })),
+      tickets: result.tickets,
       pagination: {
         total: result.total,
         page: result.page,
@@ -48,10 +52,14 @@ exports.listTickets = async (req, res, next) => {
       }
     });
   } catch (error) {
-    logger.error('Error processing ticket list:', {
+    logger.error('Ticket list error:', {
       error: error.message,
       stack: error.stack,
-      query: JSON.stringify(req.query)
+      query: JSON.stringify(req.query),
+      user: req.user?.id,
+      type: error.constructor.name,
+      sequelizeError: error.original?.message,
+      sqlState: error.original?.sqlState
     });
     next(error);
   }

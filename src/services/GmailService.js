@@ -396,11 +396,10 @@ class GmailService {
 
   async processNewEmails(notification) {
     try {
-      logger.info('Starting to process new emails:', {
-        notification: JSON.stringify(notification),
-        historyId: notification.historyId,
-        emailAddress: notification.emailAddress,
-        userEmail: this.userEmail
+      logger.info('Processing notification:', {
+        raw: notification,
+        parsed: JSON.stringify(notification),
+        keys: Object.keys(notification)
       });
       
       // Asegurar inicialización antes de procesar
@@ -413,17 +412,20 @@ class GmailService {
         historyTypes: ['messageAdded']
       });
 
-      logger.info('Raw Gmail history response:', {
-        data: JSON.stringify(historyResponse.data),
+      logger.info('Gmail API Response:', {
         status: historyResponse.status,
-        headers: historyResponse.headers
+        headers: historyResponse.headers,
+        data: JSON.stringify(historyResponse.data, null, 2),
+        hasHistory: !!historyResponse.data.history,
+        historyLength: historyResponse.data.history?.length || 0,
+        historyId: notification.historyId
       });
 
       if (!historyResponse.data.history) {
-        logger.info(`No new messages since ${notification.historyId}`, {
+        logger.info('No new messages details:', {
           historyId: notification.historyId,
-          emailAddress: notification.emailAddress,
-          responseData: JSON.stringify(historyResponse.data)
+          response: JSON.stringify(historyResponse.data),
+          notification: JSON.stringify(notification)
         });
         return { processed: 0, tickets: 0 };
       }
@@ -431,13 +433,6 @@ class GmailService {
       // Procesar los mensajes nuevos
       const processedCount = await this._processHistoryItems(historyResponse.data.history);
       
-      logger.info('Email processing results:', {
-        processedCount,
-        historyId: notification.historyId,
-        historySize: historyResponse.data.history.length,
-        emailAddress: notification.emailAddress
-      });
-
       return {
         processed: processedCount,
         tickets: processedCount,
@@ -445,13 +440,13 @@ class GmailService {
       };
 
     } catch (error) {
-      logger.error('Failed to process emails:', {
+      logger.error('Gmail API Error:', {
         error: error.message,
         stack: error.stack,
         notification: JSON.stringify(notification),
-        type: error.constructor.name,
-        gmailInitialized: this.initialized,
-        hasGmailClient: !!this.gmail
+        errorResponse: error.response?.data,
+        errorCode: error.code,
+        errorConfig: error.config
       });
       throw error;
     }

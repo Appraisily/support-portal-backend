@@ -40,27 +40,65 @@ class TicketService {
         order = 'DESC' 
       } = { ...filters, ...pagination };
 
+      logger.info('Raw listTickets request:', {
+        filters: JSON.stringify(filters),
+        pagination: JSON.stringify(pagination),
+        parsedParams: {
+          status,
+          priority,
+          page,
+          limit,
+          sort,
+          order
+        }
+      });
+
       const query = {};
       if (status) query.status = status;
       if (priority) query.priority = priority;
 
-      logger.info('Listing tickets:', {
-        filters: JSON.stringify(filters),
-        pagination: JSON.stringify(pagination),
-        query: JSON.stringify(query)
-      });
-
       const models = await getModels();
       
-      // Verificar que tenemos todos los modelos necesarios
-      if (!models.Customer || !models.Message) {
-        logger.error('Missing required models:', {
-          hasCustomer: !!models.Customer,
-          hasMessage: !!models.Message,
-          availableModels: Object.keys(models)
-        });
-        throw new Error('Required models not available');
-      }
+      // Log del estado de los modelos
+      logger.info('Database models status:', {
+        availableModels: Object.keys(models),
+        modelDetails: {
+          Ticket: {
+            exists: !!models.Ticket,
+            attributes: Object.keys(models.Ticket.rawAttributes || {})
+          },
+          Customer: {
+            exists: !!models.Customer,
+            attributes: Object.keys(models.Customer.rawAttributes || {})
+          },
+          Message: {
+            exists: !!models.Message,
+            attributes: Object.keys(models.Message.rawAttributes || {})
+          }
+        }
+      });
+
+      // Log del estado de la base de datos
+      const dbStats = await Promise.all([
+        models.Ticket.count(),
+        models.Customer.count(),
+        models.Message.count()
+      ]);
+
+      logger.info('Database current state:', {
+        counts: {
+          tickets: dbStats[0],
+          customers: dbStats[1],
+          messages: dbStats[2]
+        },
+        query: JSON.stringify(query),
+        sequelizeQuery: {
+          where: query,
+          limit: parseInt(limit),
+          offset: (page - 1) * limit,
+          order: [[sort, order]]
+        }
+      });
 
       const tickets = await models.Ticket.findAndCountAll({
         where: query,
@@ -79,29 +117,65 @@ class TicketService {
         ],
         order: [[sort, order]],
         limit: parseInt(limit),
-        offset: (page - 1) * limit
+        offset: (page - 1) * limit,
+        logging: (sql) => logger.debug('Executing SQL:', { query: sql })
       });
 
-      logger.info('Query results:', {
-        totalTickets: tickets.count,
-        returnedTickets: tickets.rows.length,
-        ticketIds: tickets.rows.map(t => t.id),
-        customersFound: tickets.rows.filter(t => t.customer).length,
-        messagesFound: tickets.rows.reduce((acc, t) => acc + (t.messages?.length || 0), 0)
+      logger.info('Query execution results:', {
+        totalCount: tickets.count,
+        returnedCount: tickets.rows.length,
+        tickets: tickets.rows.map(ticket => ({
+          id: ticket.id,
+          subject: ticket.subject,
+          status: ticket.status,
+          hasCustomer: !!ticket.customer,
+          customerEmail: ticket.customer?.email,
+          messageCount: ticket.messages?.length || 0
+        })),
+        pagination: {
+          page,
+          limit,
+          totalPages: Math.ceil(tickets.count / limit)
+        }
       });
 
       return {
-        tickets: tickets.rows,
+        tickets: tickets.rows.map(ticket => ({
+          id: ticket.id,
+          subject: ticket.subject,
+          status: ticket.status,
+          priority: ticket.priority,
+          category: ticket.category,
+          customer: ticket.customer ? {
+            id: ticket.customer.id,
+            name: ticket.customer.name,
+            email: ticket.customer.email
+          } : null,
+          lastMessage: ticket.messages?.[0] ? {
+            content: ticket.messages[0].content,
+            createdAt: ticket.messages[0].createdAt
+          } : null,
+          createdAt: ticket.createdAt,
+          updatedAt: ticket.updatedAt
+        })),
         total: tickets.count,
         page: parseInt(page),
         totalPages: Math.ceil(tickets.count / limit)
       };
+
     } catch (error) {
-      logger.error('Error listing tickets:', {
+      logger.error('Error in listTickets:', {
         error: error.message,
         stack: error.stack,
         filters: JSON.stringify(filters),
-        pagination: JSON.stringify(pagination)
+        pagination: JSON.stringify(pagination),
+        sequelizeError: error.original?.message,
+        sqlState: error.original?.sqlState,
+        dbState: {
+          initialized: this.initialized,
+          hasModels: !!(await getModels()),
+          modelNames: Object.keys(await getModels())
+        }
       });
       throw error;
     }

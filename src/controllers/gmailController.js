@@ -36,33 +36,39 @@ exports.setupWatch = async (req, res) => {
 
 exports.handleWebhook = async (req, res) => {
   try {
+    logger.info('Raw webhook request:', {
+      headers: req.headers,
+      body: req.body,
+      rawBody: req.rawBody,
+      query: req.query
+    });
+
     const clientIP = req.headers['x-forwarded-for'] || req.ip;
     const googleIPs = ['66.249.93.', '142.250.', '35.191.'];
     
-    logger.info('Webhook request received:', {
-      ip: clientIP,
-      method: req.method,
-      path: req.path,
-      headers: JSON.stringify(req.headers),
-      body: JSON.stringify(req.body)
-    });
-
-    if (!googleIPs.some(ip => clientIP.startsWith(ip))) {
-      logger.warn(`Invalid IP: ${clientIP}`);
-      return res.status(200).send('OK');
-    }
-
-    // Decodificar y validar la notificación
     if (!req.body?.message?.data) {
-      logger.warn('Missing message data in webhook request', {
+      logger.warn('Missing message data structure:', {
+        hasBody: !!req.body,
+        hasMessage: !!req.body?.message,
+        hasData: !!req.body?.message?.data,
         body: JSON.stringify(req.body)
       });
       return res.status(200).send('OK');
     }
 
-    const notification = JSON.parse(
-      Buffer.from(req.body.message.data, 'base64').toString()
-    );
+    // Decodificar el mensaje en base64
+    const rawData = req.body.message.data;
+    const decodedData = Buffer.from(rawData, 'base64').toString();
+    
+    logger.info('Webhook data details:', {
+      rawData,
+      decodedData,
+      decodedJSON: JSON.parse(decodedData),
+      messageId: req.body.message.messageId,
+      publishTime: req.body.message.publishTime
+    });
+
+    const notification = JSON.parse(decodedData);
 
     logger.info('Decoded webhook notification:', {
       historyId: notification.historyId,
