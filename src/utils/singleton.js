@@ -1,5 +1,5 @@
-// Nuevo archivo para manejar el estado global
 const logger = require('./logger');
+const secretManager = require('./secretManager');
 
 class AppState {
   constructor() {
@@ -17,7 +17,7 @@ class AppState {
         logger.info('Starting application initialization');
 
         // 1. Cargar secretos si es necesario
-        if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
+        if (process.env.NODE_ENV === 'production') {
           logger.info('Loading secrets in AppState...');
           await secretManager.loadSecrets();
         }
@@ -48,4 +48,5 @@ class AppState {
 }
 
 // Exportar una única instancia
-module.exports = new AppState(); 
+const appState = new AppState();
+module.exports = appState; 
