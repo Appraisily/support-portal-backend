@@ -1,28 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const gmailController = require('../controllers/gmailController');
-const { authenticate } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
-// Asegurarnos de que todos los métodos del controlador existen
-const {
-  testConnection,
-  syncThread,
-  setupWatch,
-  handleWebhook
-} = gmailController;
+// Verificar que los métodos necesarios estén definidos
+const requiredMethods = ['handleWebhook'];
+const missingMethods = requiredMethods.filter(method => !gmailController[method]);
 
-// Verificar que los métodos existen antes de usarlos
-if (!testConnection || !syncThread || !setupWatch || !handleWebhook) {
-  throw new Error('Required Gmail controller methods not defined');
+if (missingMethods.length > 0) {
+  logger.error('Missing Gmail controller methods', {
+    missingMethods,
+    availableMethods: Object.keys(gmailController)
+  });
+  throw new Error(`Missing Gmail controller methods: ${missingMethods.join(', ')}`);
 }
 
-// Rutas autenticadas
-router.get('/test', authenticate, testConnection);
-router.post('/tickets/:id/sync', authenticate, syncThread);
-router.post('/setup-watch', authenticate, setupWatch);
-
-// Webhook público para Google
-router.post('/webhook', handleWebhook);
+// Rutas de Gmail
+router.post('/webhook', gmailController.handleWebhook);
 
 module.exports = router;
