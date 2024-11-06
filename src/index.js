@@ -13,10 +13,11 @@ async function startServer() {
   try {
     // 1. Cargar TODOS los secretos primero
     if (process.env.NODE_ENV === 'production') {
-      logger.info('Loading secrets...');
+      logger.info('Loading secrets from Secret Manager...');
       await secretManager.loadSecrets();
-      
-      // Verificar todos los secretos necesarios
+      logger.info('All secrets loaded successfully');
+
+      // Ahora verificamos las variables de entorno DESPUÉS de cargar los secretos
       const requiredEnvVars = [
         // DB vars
         'DB_USER',
@@ -25,19 +26,18 @@ async function startServer() {
         'DB_HOST',
         'DB_PORT',
         'CLOUD_SQL_CONNECTION_NAME',
-        // Gmail vars
+        // Gmail vars (ahora deberían estar disponibles)
         'GMAIL_CLIENT_ID',
         'GMAIL_CLIENT_SECRET',
         'GMAIL_REFRESH_TOKEN',
-        'GOOGLE_CLOUD_PROJECT_ID'
+        // JWT
+        'JWT_SECRET'
       ];
 
       const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
       if (missingVars.length > 0) {
-        throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+        throw new Error(`Missing required environment variables after loading secrets: ${missingVars.join(', ')}`);
       }
-
-      logger.info('All required secrets loaded');
     }
 
     // 2. Inicializar base de datos

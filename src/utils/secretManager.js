@@ -28,21 +28,30 @@ class SecretManager {
     
     try {
       const requiredSecrets = [
-        'GMAIL_REFRESH_TOKEN',
-        'jwt-secret',
         'DB_USER',
         'DB_PASSWORD',
         'DB_NAME',
         'DB_HOST',
         'DB_PORT',
-        'CLOUD_SQL_CONNECTION_NAME'
+        'CLOUD_SQL_CONNECTION_NAME',
+        'GMAIL_CLIENT_ID',
+        'GMAIL_CLIENT_SECRET',
+        'GMAIL_REFRESH_TOKEN',
+        {
+          secretName: 'jwt-secret',
+          envVar: 'JWT_SECRET'
+        }
       ];
 
-      for (const secretName of requiredSecrets) {
-        if (!this.secrets.has(secretName)) {
-          const secret = await this._fetchSecret(secretName);
-          this.secrets.set(secretName, secret);
-          process.env[secretName] = secret;
+      for (const secret of requiredSecrets) {
+        if (typeof secret === 'string') {
+          const value = await this._fetchSecret(secret);
+          this.secrets.set(secret, value);
+          process.env[secret] = value;
+        } else {
+          const value = await this._fetchSecret(secret.secretName);
+          this.secrets.set(secret.secretName, value);
+          process.env[secret.envVar] = value;
         }
       }
 
