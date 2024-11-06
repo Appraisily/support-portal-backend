@@ -404,6 +404,8 @@ class GmailService {
 
   async processNewEmails(notification) {
     try {
+      logger.info('Starting to process new emails:', notification);
+      
       // Asegurar inicialización antes de procesar
       await this.ensureInitialized();
       
@@ -413,17 +415,35 @@ class GmailService {
         historyTypes: ['messageAdded']
       });
 
+      logger.info('History list response:', {
+        hasHistory: !!response.data.history,
+        historyId: notification.historyId,
+        response: response.data
+      });
+
       if (!response.data.history) {
-        logger.debug(`No new messages since ${notification.historyId}`);
-        return;
+        logger.info(`No new messages since ${notification.historyId}`);
+        return { processed: 0, tickets: 0 };
       }
 
       const processedCount = await this._processHistoryItems(response.data.history);
       logger.info(`Processed ${processedCount} new messages`);
       
       await this.markNotificationAsProcessed(notification.historyId);
+
+      return {
+        processed: processedCount,
+        tickets: processedCount, // Asumiendo 1 ticket por mensaje
+        historyId: notification.historyId
+      };
+
     } catch (error) {
-      logger.error('Failed to process emails:', error);
+      logger.error('Failed to process emails:', {
+        error: error.message,
+        stack: error.stack,
+        notification: notification,
+        type: error.constructor.name
+      });
       throw error;
     }
   }

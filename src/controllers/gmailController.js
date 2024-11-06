@@ -39,8 +39,20 @@ exports.handleWebhook = async (req, res) => {
     const clientIP = req.headers['x-forwarded-for'] || req.ip;
     const googleIPs = ['66.249.93.', '142.250.', '35.191.'];
     
+    logger.info('Webhook request received:', {
+      ip: clientIP,
+      headers: req.headers,
+      hasData: !!req.body?.message?.data
+    });
+
     if (!googleIPs.some(ip => clientIP.startsWith(ip))) {
       logger.warn(`Invalid IP: ${clientIP}`);
+      return res.status(200).send('OK');
+    }
+
+    // Decodificar y validar la notificación
+    if (!req.body?.message?.data) {
+      logger.warn('Missing message data in webhook request');
       return res.status(200).send('OK');
     }
 
@@ -48,25 +60,32 @@ exports.handleWebhook = async (req, res) => {
       Buffer.from(req.body.message.data, 'base64').toString()
     );
 
-    logger.info('Received webhook notification:', {
+    logger.info('Decoded webhook notification:', {
       historyId: notification.historyId,
       emailAddress: notification.emailAddress,
-      raw: notification
+      raw: notification,
+      decodedData: req.body.message.data
     });
 
     // Si es una notificación de configuración inicial, solo logueamos y OK
     if (!notification.emailAddress || !notification.historyId) {
-      logger.info('Received watch setup confirmation');
+      logger.info('Received watch setup confirmation:', notification);
       return res.status(200).send('OK');
     }
 
+    // Asegurarnos de que la app está inicializada
+    logger.info('Initializing application before processing webhook...');
+    await appState.initialize();
+
     // Solo procesamos si parece una notificación real de email
     const result = await GmailService.processNewEmails(notification);
+    
     logger.info('Email processing complete:', {
       success: true,
-      emailsProcessed: result.processed,
-      ticketsCreated: result.tickets,
-      historyId: notification.historyId
+      emailsProcessed: result?.processed || 0,
+      ticketsCreated: result?.tickets || 0,
+      historyId: notification.historyId,
+      result: result
     });
 
     res.status(200).send('OK');
@@ -75,7 +94,9 @@ exports.handleWebhook = async (req, res) => {
     logger.error('Webhook error:', {
       error: error.message,
       stack: error.stack,
-      notification: req.body?.message?.data
+      notification: req.body?.message?.data,
+      rawBody: req.body,
+      type: error.constructor.name
     });
     res.status(200).send('Error processed');
   }
