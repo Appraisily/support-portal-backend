@@ -34,15 +34,42 @@ logger.info('Initializing routes', {
   }
 });
 
-// Rutas públicas (no requieren autenticación)
-router.use('/gmail/webhook', gmailRoutes); // El webhook debe ser público
+// Middleware de autenticación global
+router.use((req, res, next) => {
+  logger.debug('Incoming request', {
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    ip: req.ip
+  });
+  next();
+});
 
-// Rutas que requieren autenticación
+// Rutas públicas
+router.use('/gmail/webhook', gmailRoutes);
+
+// Rutas autenticadas
 router.use('/auth', authRoutes);
 router.use('/tickets', ticketRoutes);
-router.use('/gmail', gmailRoutes); // Otras rutas de Gmail (como health check)
+router.use('/gmail', gmailRoutes);
 
-// Log cuando las rutas están configuradas
+// Middleware de error global
+router.use((err, req, res, next) => {
+  logger.error('Route error handler', {
+    error: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method
+  });
+  
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production' 
+      ? 'Internal server error' 
+      : err.message
+  });
+});
+
+// Log de inicialización exitosa
 logger.info('Routes initialized successfully', {
   timestamp: new Date().toISOString(),
   environment: process.env.NODE_ENV

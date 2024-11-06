@@ -113,6 +113,12 @@ exports.replyToTicket = async (req, res, next) => {
     const { id } = req.params;
     const { content, attachments } = req.body;
 
+    logger.info('Adding reply to ticket', {
+      ticketId: id,
+      userId: req.user?.id,
+      hasAttachments: !!attachments
+    });
+
     const ticket = await TicketService.getTicketById(id);
     const message = await TicketService.addMessage(id, {
       content,
@@ -120,12 +126,23 @@ exports.replyToTicket = async (req, res, next) => {
       author: req.user.id
     });
 
-    logger.info(`Reply sent to ticket ${id}`);
+    logger.info('Reply added successfully', {
+      ticketId: id,
+      messageId: message.id,
+      userId: req.user?.id
+    });
+
     res.json({
       success: true,
       message
     });
   } catch (error) {
+    logger.error('Error adding reply to ticket', {
+      ticketId: req.params.id,
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id
+    });
     next(error);
   }
 };

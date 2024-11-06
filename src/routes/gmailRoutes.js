@@ -4,7 +4,7 @@ const gmailController = require('../controllers/gmailController');
 const logger = require('../utils/logger');
 
 // Verificar que los métodos necesarios estén definidos
-const requiredMethods = ['handleWebhook'];
+const requiredMethods = ['handleWebhook', 'healthCheck'];
 const missingMethods = requiredMethods.filter(method => !gmailController[method]);
 
 if (missingMethods.length > 0) {
@@ -17,5 +17,6 @@ if (missingMethods.length > 0) {
 
 // Rutas de Gmail
 router.post('/webhook', gmailController.handleWebhook);
+router.get('/health', gmailController.healthCheck);
 
 module.exports = router;

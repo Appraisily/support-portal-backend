@@ -44,8 +44,9 @@ class TicketService {
   }
 
   async listTickets(filters = {}, pagination = {}) {
-    await this.initialize();
     try {
+      await this.initialize();
+      
       const { 
         status, 
         priority, 
@@ -54,6 +55,12 @@ class TicketService {
         sort = 'createdAt', 
         order = 'DESC' 
       } = { ...filters, ...pagination };
+
+      // Validar parámetros
+      if (page < 1 || limit < 1) {
+        logger.warn('Invalid pagination parameters', { page, limit });
+        throw new ApiError(400, 'Invalid pagination parameters');
+      }
 
       logger.info('Raw listTickets request:', {
         filters: JSON.stringify(filters),
@@ -179,20 +186,19 @@ class TicketService {
       };
 
     } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
       logger.error('Error in listTickets:', {
         error: error.message,
         stack: error.stack,
         filters: JSON.stringify(filters),
         pagination: JSON.stringify(pagination),
         sequelizeError: error.original?.message,
-        sqlState: error.original?.sqlState,
-        dbState: {
-          initialized: this.initialized,
-          hasModels: !!(await getModels()),
-          modelNames: Object.keys(await getModels())
-        }
+        sqlState: error.original?.sqlState
       });
-      throw error;
+      throw new ApiError(500, 'Error listing tickets');
     }
   }
 
@@ -342,6 +348,15 @@ class TicketService {
 
   async createTicketFromEmail(emailData) {
     try {
+      if (!emailData?.subject || !emailData?.from) {
+        logger.error('Invalid email data for ticket creation', {
+          hasSubject: !!emailData?.subject,
+          hasFrom: !!emailData?.from,
+          emailData: JSON.stringify(emailData)
+        });
+        throw new ApiError(400, 'Invalid email data');
+      }
+
       logger.info('Creating ticket from email:', {
         subject: emailData.subject,
         from: emailData.from,
@@ -351,6 +366,22 @@ class TicketService {
 
       const models = await getModels();
       
+      // Verificar si ya existe un ticket para este thread
+      if (emailData.threadId) {
+        const existingTicket = await models.Ticket.findOne({
+          where: { gmailThreadId: emailData.threadId }
+        });
+
+        if (existingTicket) {
+          logger.info('Found existing ticket for thread', {
+            threadId: emailData.threadId,
+            ticketId: existingTicket.id
+          });
+          // Aquí podrías actualizar el ticket existente si es necesario
+          return existingTicket;
+        }
+      }
+
       // Buscar o crear el customer basado en el email
       const [customer] = await models.Customer.findOrCreate({
         where: { email: emailData.from },

@@ -256,13 +256,21 @@ class GmailService {
 
   async handleNewEmail(emailData) {
     try {
+      if (!emailData?.from || !emailData?.subject) {
+        throw new Error('Invalid email data: missing required fields');
+      }
+
       const models = await getModels();
       
-      // Extraer datos del remitente
-      const emailMatch = emailData.from.match(/<(.+?)>/) || [null, emailData.from];
+      // Mejorar la extracción del email
+      const emailMatch = emailData.from.match(/<([^>]+)>/) || [null, emailData.from.trim()];
       const senderEmail = emailMatch[1].toLowerCase();
-      const senderName = emailData.from.split('<')[0].trim().replace(/"/g, '');
-      
+      const senderName = emailData.from.split('<')[0].trim().replace(/["\r\n]/g, '');
+
+      if (!senderEmail.includes('@')) {
+        throw new Error('Invalid sender email format');
+      }
+
       // Buscar o crear customer
       const [customer] = await models.Customer.findOrCreate({
         where: { email: senderEmail },
@@ -343,7 +351,11 @@ class GmailService {
       logger.error('Error handling new email:', {
         error: error.message,
         stack: error.stack,
-        emailData: JSON.stringify(emailData)
+        emailData: {
+          from: emailData?.from,
+          subject: emailData?.subject,
+          threadId: emailData?.threadId
+        }
       });
       throw error;
     }
@@ -396,57 +408,87 @@ class GmailService {
 
   async processNewEmails(notification) {
     try {
-      logger.info('Processing notification:', {
-        raw: notification,
-        parsed: JSON.stringify(notification),
-        keys: Object.keys(notification)
-      });
+      const startTime = Date.now();
       
-      // Asegurar inicialización antes de procesar
-      await this.ensureInitialized();
-      
-      // Obtener historial desde Gmail
-      const historyResponse = await this.gmail.users.history.list({
-        userId: 'me',
-        startHistoryId: notification.historyId,
-        historyTypes: ['messageAdded']
-      });
-
-      logger.info('Gmail API Response:', {
-        status: historyResponse.status,
-        headers: historyResponse.headers,
-        data: JSON.stringify(historyResponse.data, null, 2),
-        hasHistory: !!historyResponse.data.history,
-        historyLength: historyResponse.data.history?.length || 0,
-        historyId: notification.historyId
-      });
-
-      if (!historyResponse.data.history) {
-        logger.info('No new messages details:', {
-          historyId: notification.historyId,
-          response: JSON.stringify(historyResponse.data),
-          notification: JSON.stringify(notification)
-        });
-        return { processed: 0, tickets: 0 };
+      // Validar la notificación
+      if (!notification?.historyId || !notification?.emailAddress) {
+        throw new Error('Invalid notification data');
       }
 
-      // Procesar los mensajes nuevos
+      await this.ensureInitialized();
+      
+      // Verificar que el historyId es un número válido
+      const currentHistoryId = parseInt(notification.historyId);
+      if (isNaN(currentHistoryId)) {
+        throw new Error('Invalid history ID format');
+      }
+
+      const lastHistoryId = await this.getLastHistoryId();
+      if (lastHistoryId && currentHistoryId <= lastHistoryId) {
+        logger.info('Skipping already processed history ID', {
+          currentHistoryId,
+          lastProcessedHistoryId: lastHistoryId
+        });
+        return { processed: 0, tickets: 0, skipped: true };
+      }
+
+      // Añadir timeout para la llamada a Gmail API
+      const historyResponse = await Promise.race([
+        this.gmail.users.history.list({
+          userId: 'me',
+          startHistoryId: notification.historyId,
+          historyTypes: ['messageAdded'],
+          maxResults: 100
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Gmail API timeout')), 30000)
+        )
+      ]);
+
+      logger.info('Gmail history retrieved', {
+        status: historyResponse.status,
+        historyCount: historyResponse.data.history?.length || 0,
+        currentHistoryId: notification.historyId,
+        newHistoryId: historyResponse.data.historyId,
+        responseTime: Date.now() - startTime
+      });
+
+      if (!historyResponse.data.history?.length) {
+        logger.info('No new messages found', {
+          currentHistoryId: notification.historyId,
+          newHistoryId: historyResponse.data.historyId,
+          processingTime: Date.now() - startTime
+        });
+        
+        // Actualizar el último historyId aunque no haya mensajes nuevos
+        await this.updateLastHistoryId(historyResponse.data.historyId);
+        
+        return { processed: 0, tickets: 0, updated: true };
+      }
+
       const processedCount = await this._processHistoryItems(historyResponse.data.history);
       
-      return {
+      // Actualizar el último historyId después de procesar
+      await this.updateLastHistoryId(historyResponse.data.historyId);
+      
+      const result = {
         processed: processedCount,
         tickets: processedCount,
-        historyId: notification.historyId
+        historyId: historyResponse.data.historyId,
+        processingTime: Date.now() - startTime
       };
 
+      logger.info('Email processing completed', result);
+      return result;
+
     } catch (error) {
-      logger.error('Gmail API Error:', {
+      logger.error('Gmail processing error', {
         error: error.message,
         stack: error.stack,
-        notification: JSON.stringify(notification),
-        errorResponse: error.response?.data,
-        errorCode: error.code,
-        errorConfig: error.config
+        notification: {
+          historyId: notification?.historyId,
+          emailAddress: notification?.emailAddress
+        }
       });
       throw error;
     }

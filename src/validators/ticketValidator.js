@@ -38,3 +38,15 @@ exports.validateTicketUpdate = [
     .notEmpty()
     .withMessage('Invalid agent ID')
 ];
+
+exports.validateTicketReply = [
+  body('content')
+    .trim()
+    .notEmpty()
+    .withMessage('Reply content is required'),
+  
+  body('attachments')
+    .optional()
+    .isArray()
+    .withMessage('Attachments must be an array')
+];
