@@ -4,6 +4,7 @@ const routes = require('./routes');
 const gmailRoutes = require('./routes/gmailRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
+const appState = require('./utils/singleton');
 
 const app = express();
 
@@ -12,24 +13,24 @@ app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
 
+// Middleware para asegurar que la aplicación está inicializada
+app.use(async (req, res, next) => {
+  try {
+    if (!appState.initialized) {
+      await appState.initialize();
+    }
+    next();
+  } catch (error) {
+    logger.error('Failed to initialize application:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 // Rutas
 app.use('/api', routes);
 app.use('/api/gmail', gmailRoutes);
 
 // Manejador de errores
 app.use(errorHandler);
-
-// Inicializar Gmail Service
-const GmailService = require('./services/GmailService');
-if (process.env.NODE_ENV === 'production') {
-  GmailService.setupGmail()
-    .then(() => GmailService.setupGmailWatch())
-    .then(() => {
-      logger.info('Gmail watch setup completed');
-    })
-    .catch(error => {
-      logger.error('Failed to setup Gmail watch:', error);
-    });
-}
 
 module.exports = app;

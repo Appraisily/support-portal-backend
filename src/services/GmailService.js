@@ -1,6 +1,6 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
-const { getModels } = require('../models');
+const appState = require('../utils/singleton');
 
 class GmailService {
   constructor() {
@@ -11,12 +11,12 @@ class GmailService {
   }
 
   async setupGmail() {
-    try {
-      if (this.initialized) {
-        logger.info('Gmail service already initialized');
-        return;
-      }
+    if (this.initialized) {
+      logger.info('Gmail service already initialized');
+      return;
+    }
 
+    try {
       logger.info('Setting up Gmail with OAuth2...');
       
       // Solo verificar las credenciales de OAuth2
@@ -72,15 +72,7 @@ class GmailService {
       return userInfo.data;
 
     } catch (error) {
-      this.initialized = false;
-      this.gmail = null;
-      
-      logger.error('Failed to setup Gmail:', {
-        error: error.message,
-        stack: error.stack,
-        response: error.response?.data
-      });
-      
+      logger.error('Gmail setup failed:', error);
       throw error;
     }
   }
@@ -306,7 +298,7 @@ class GmailService {
 
       logger.info('3. Datos extraídos:', { subject, from });
 
-      const models = await getModels();
+      const models = await appState.getModels();
       
       const emailMatch = from.match(/<(.+?)>/);
       const senderEmail = emailMatch ? emailMatch[1] : from;
@@ -430,7 +422,7 @@ class GmailService {
 
   async isMessageProcessed(messageId) {
     try {
-      const models = await getModels();
+      const models = await appState.getModels();
       // Buscar un ticket con este messageId
       const ticket = await models.Ticket.findOne({
         where: {
@@ -452,7 +444,7 @@ class GmailService {
 
   async getLastHistoryId() {
     try {
-      const models = await getModels();
+      const models = await appState.getModels();
       const setting = await models.Setting.findOne({
         where: { key: 'lastGmailHistoryId' }
       });
@@ -465,7 +457,7 @@ class GmailService {
 
   async updateLastHistoryId(historyId) {
     try {
-      const models = await getModels();
+      const models = await appState.getModels();
       await models.Setting.upsert({
         key: 'lastGmailHistoryId',
         value: historyId.toString()
