@@ -2,6 +2,7 @@ const { google } = require('googleapis');
 const logger = require('../utils/logger');
 const appState = require('../utils/singleton');
 const { Op } = require('sequelize');
+const secretManager = require('../utils/secretManager');
 
 class GmailService {
   constructor() {
@@ -83,7 +84,13 @@ class GmailService {
     try {
       logger.info('Setting up Gmail watch...');
       
-      // Asegurarse de que Gmail está inicializado
+      // Asegurarnos de que los secretos están cargados
+      if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
+        logger.info('Loading secrets before setting up watch...');
+        await secretManager.loadSecrets();
+      }
+
+      // Asegurarnos de que Gmail está inicializado
       if (!this.gmail) {
         await this.setupGmail();
       }
@@ -400,13 +407,40 @@ class GmailService {
     if (this.initialized) return;
     if (this.initPromise) return this.initPromise;
 
-    this.initPromise = this.setupGmail();
-    await this.initPromise;
-    this.initialized = true;
+    this.initPromise = (async () => {
+      try {
+        // 1. Cargar secretos si es necesario
+        if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
+          logger.info('Loading secrets in Gmail service...');
+          await secretManager.loadSecrets();
+        }
+
+        // 2. Inicializar aplicación si es necesario
+        if (!appState.initialized) {
+          logger.info('Initializing application in Gmail service...');
+          await appState.initialize();
+        }
+
+        // 3. Configurar Gmail si es necesario
+        if (!this.gmail) {
+          logger.info('Setting up Gmail client...');
+          await this.setupGmail();
+        }
+
+        this.initialized = true;
+        logger.info('Gmail service fully initialized');
+      } catch (error) {
+        this.initPromise = null;
+        throw error;
+      }
+    })();
+
+    return this.initPromise;
   }
 
   async processNewEmails(notification) {
     try {
+      // Asegurar inicialización antes de procesar
       await this.ensureInitialized();
       
       const response = await this.gmail.users.history.list({
@@ -506,6 +540,9 @@ class GmailService {
 
   async isNotificationProcessed(historyId) {
     try {
+      // Asegurar inicialización antes de verificar
+      await this.ensureInitialized();
+      
       const models = await appState.getModels();
       const processedNotification = await models.Setting.findOne({
         where: { 
@@ -522,7 +559,7 @@ class GmailService {
       return false;
     } catch (error) {
       logger.error('Error checking processed notification:', error);
-      return false; // En caso de error, procesamos por seguridad
+      return false;
     }
   }
 

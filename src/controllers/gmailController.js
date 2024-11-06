@@ -1,5 +1,7 @@
 const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
+const secretManager = require('../utils/secretManager');
+const appState = require('../utils/singleton');
 
 exports.testConnection = async (req, res) => {
   try {
@@ -40,6 +42,16 @@ exports.handleWebhook = async (req, res) => {
     if (!googleIPs.some(ip => clientIP.startsWith(ip))) {
       logger.warn(`Invalid IP: ${clientIP}`);
       return res.status(200).send('OK');
+    }
+
+    if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
+      logger.info('Loading secrets before processing webhook...');
+      await secretManager.loadSecrets();
+    }
+
+    if (!appState.initialized) {
+      logger.info('Initializing application before processing webhook...');
+      await appState.initialize();
     }
 
     const notification = JSON.parse(
