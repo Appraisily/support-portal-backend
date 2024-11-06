@@ -1,46 +1,57 @@
 const winston = require('winston');
 
+// Formato personalizado para los logs
+const customFormat = winston.format.printf(({ level, message, timestamp, ...metadata }) => {
+  // Simplificar el manejo de metadatos
+  let meta = '';
+  if (Object.keys(metadata).length > 0) {
+    // Filtrar el campo 'data' si existe y usar directamente el contenido
+    const cleanMeta = metadata.data ? JSON.parse(metadata.data) : metadata;
+    meta = `\n${JSON.stringify(cleanMeta, null, 2)}`;
+  }
+
+  return `${timestamp} ${level}: ${message}${meta}`;
+});
+
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.colorize(),
-    winston.format.printf(({ timestamp, level, message, ...rest }) => {
-      // Convertir los datos adicionales a string si existen
-      const extraData = Object.keys(rest).length ? 
-        '\n' + JSON.stringify(rest, null, 2) : '';
-      
-      return `${timestamp} ${level}: ${message}${extraData}`;
-    })
+    winston.format.errors({ stack: true }),
+    customFormat
   ),
   transports: [
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.simple(),
-        winston.format.printf(({ timestamp, level, message, ...rest }) => {
-          // Asegurarnos de que los objetos se muestran correctamente
-          const extraData = Object.keys(rest).length ? 
-            '\n' + JSON.stringify(rest, null, 2) : '';
-          
-          return `${timestamp} ${level}: ${message}${extraData}`;
-        })
+        winston.format.timestamp(),
+        customFormat
       )
     })
   ]
 });
 
-// Añadir método para logging más detallado
-logger.debug = (message, data) => {
-  logger.log('debug', message, { data: JSON.stringify(data, null, 2) });
+// Métodos simplificados
+logger.debug = (message, meta = {}) => {
+  logger.log('debug', message, meta);
 };
 
-logger.info = (message, data) => {
-  logger.log('info', message, data ? { data: JSON.stringify(data, null, 2) } : {});
+logger.info = (message, meta = {}) => {
+  // Evitar doble stringify
+  const cleanMeta = typeof meta === 'string' ? JSON.parse(meta) : meta;
+  logger.log('info', message, cleanMeta);
 };
 
-logger.error = (message, data) => {
-  logger.log('error', message, data ? { data: JSON.stringify(data, null, 2) } : {});
+logger.error = (message, meta = {}) => {
+  // Para errores, incluir stack trace si está disponible
+  const errorMeta = meta instanceof Error ? 
+    { 
+      message: meta.message,
+      stack: meta.stack,
+      ...meta
+    } : meta;
+  
+  logger.log('error', message, errorMeta);
 };
 
 module.exports = logger;

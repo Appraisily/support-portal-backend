@@ -4,61 +4,47 @@ const logger = require('../utils/logger');
 
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
-    logger.info('Login attempt:', { 
+    const { email } = req.body;
+    
+    logger.info('Login attempt', { 
       email,
-      hasAdminEmail: !!process.env.ADMIN_EMAIL,
-      hasAdminPassword: !!process.env.ADMIN_PASSWORD
+      hasCredentials: !!process.env.ADMIN_EMAIL
     });
 
-    // Verificar que tenemos las credenciales cargadas
     if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) {
-      logger.error('Admin credentials not loaded');
-      throw new ApiError(500, 'Error de configuración del servidor');
+      logger.error('Missing admin credentials');
+      throw new ApiError(500, 'Server configuration error');
     }
 
-    if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
-      logger.warn('Login failed:', { 
-        email,
-        invalidEmail: email !== process.env.ADMIN_EMAIL,
-        invalidPassword: password !== process.env.ADMIN_PASSWORD
-      });
-      throw new ApiError(401, 'Credenciales inválidas');
-    }
-
-    // Verificar que tenemos el secreto JWT
-    if (!process.env.JWT_SECRET) {
-      logger.error('JWT_SECRET not loaded');
-      throw new ApiError(500, 'Error de configuración del servidor');
+    if (email !== process.env.ADMIN_EMAIL || 
+        req.body.password !== process.env.ADMIN_PASSWORD) {
+      logger.warn('Login failed', { email });
+      throw new ApiError(401, 'Invalid credentials');
     }
 
     const token = jwt.sign(
-      { 
-        id: '1',
-        role: 'admin'
-      },
+      { id: '1', role: 'admin' },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    logger.info('Admin logged in successfully:', {
+    logger.info('Login successful', {
       email: process.env.ADMIN_EMAIL,
-      tokenGenerated: !!token
+      role: 'admin'
     });
 
     res.json({
       token,
       user: {
         id: '1',
-        name: 'Admin',
         email: process.env.ADMIN_EMAIL,
         role: 'admin'
       }
     });
   } catch (error) {
-    logger.error('Login error:', {
+    logger.error('Login error', {
       error: error.message,
-      stack: error.stack
+      email: req.body.email
     });
     next(error);
   }

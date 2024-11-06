@@ -5,20 +5,10 @@ exports.listTickets = async (req, res, next) => {
   try {
     const { status, priority, page = 1, limit = 10 } = req.query;
     
-    logger.info('Raw ticket list request:', {
-      query: JSON.stringify(req.query),
-      headers: JSON.stringify(req.headers),
-      user: req.user ? {
-        id: req.user.id,
-        email: req.user.email,
-        role: req.user.role
-      } : null,
-      params: {
-        status,
-        priority,
-        page,
-        limit
-      }
+    logger.info('Listing tickets', {
+      filters: { status, priority },
+      pagination: { page, limit },
+      userId: req.user?.id
     });
 
     const result = await TicketService.listTickets(
@@ -26,21 +16,10 @@ exports.listTickets = async (req, res, next) => {
       { page, limit }
     );
 
-    logger.info('Ticket list response prepared:', {
+    logger.info('Tickets retrieved', {
       totalTickets: result.total,
-      returnedTickets: result.tickets.length,
-      pagination: {
-        page: result.page,
-        totalPages: result.totalPages,
-        limit
-      },
-      sampleTicket: result.tickets[0] ? {
-        id: result.tickets[0].id,
-        subject: result.tickets[0].subject,
-        status: result.tickets[0].status,
-        hasCustomer: !!result.tickets[0].customer,
-        hasMessages: !!result.tickets[0].lastMessage
-      } : 'No tickets found'
+      currentPage: result.page,
+      ticketsReturned: result.tickets.length
     });
 
     res.json({
@@ -52,14 +31,10 @@ exports.listTickets = async (req, res, next) => {
       }
     });
   } catch (error) {
-    logger.error('Ticket list error:', {
+    logger.error('Error listing tickets', {
       error: error.message,
-      stack: error.stack,
-      query: JSON.stringify(req.query),
-      user: req.user?.id,
-      type: error.constructor.name,
-      sequelizeError: error.original?.message,
-      sqlState: error.original?.sqlState
+      filters: req.query,
+      userId: req.user?.id
     });
     next(error);
   }
@@ -67,47 +42,68 @@ exports.listTickets = async (req, res, next) => {
 
 exports.getTicket = async (req, res, next) => {
   try {
-    const ticket = await TicketService.getTicketById(req.params.id);
-    
-    const response = {
-      ticket: {
-        id: ticket.id,
-        subject: ticket.subject,
-        customer: ticket.customer ? {
-          id: ticket.customer.id,
-          name: ticket.customer.name,
-          email: ticket.customer.email
-        } : null,
-        status: ticket.status,
-        priority: ticket.priority,
-        createdAt: ticket.createdAt.toISOString(),
-        lastUpdated: ticket.updatedAt.toISOString(),
-        category: ticket.category,
-        messages: ticket.messages || [],
-        attachments: ticket.attachments || []
-      }
-    };
+    logger.info('Getting ticket details', {
+      ticketId: req.params.id,
+      userId: req.user?.id
+    });
 
-    res.json(response);
+    const ticket = await TicketService.getTicketById(req.params.id);
+    res.json({ ticket });
   } catch (error) {
+    logger.error('Error getting ticket', {
+      ticketId: req.params.id,
+      error: error.message
+    });
     next(error);
   }
 };
 
 exports.createTicket = async (req, res, next) => {
   try {
+    logger.info('Creating new ticket', {
+      subject: req.body.subject,
+      category: req.body.category,
+      userId: req.user?.id
+    });
+
     const ticket = await TicketService.createTicket(req.body);
+    
+    logger.info('Ticket created', {
+      ticketId: ticket.id,
+      status: ticket.status
+    });
+
     res.status(201).json({ ticket });
   } catch (error) {
+    logger.error('Error creating ticket', {
+      error: error.message,
+      requestBody: req.body
+    });
     next(error);
   }
 };
 
 exports.updateTicket = async (req, res, next) => {
   try {
+    logger.info('Updating ticket', {
+      ticketId: req.params.id,
+      updates: req.body,
+      userId: req.user?.id
+    });
+
     const ticket = await TicketService.updateTicket(req.params.id, req.body);
+    
+    logger.info('Ticket updated', {
+      ticketId: ticket.id,
+      newStatus: ticket.status
+    });
+
     res.json({ ticket });
   } catch (error) {
+    logger.error('Error updating ticket', {
+      ticketId: req.params.id,
+      error: error.message
+    });
     next(error);
   }
 };
