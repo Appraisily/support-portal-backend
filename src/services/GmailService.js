@@ -7,6 +7,7 @@ class GmailService {
     this.userEmail = 'info@appraisily.com';
     this.gmail = null;
     this.initialized = false;
+    this.initPromise = null;
     logger.info(`Creating Gmail service instance for: ${this.userEmail}`);
   }
 
@@ -394,80 +395,43 @@ class GmailService {
     }
   }
 
+  async ensureInitialized() {
+    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = this.setupGmail();
+    await this.initPromise;
+    this.initialized = true;
+  }
+
   async processNewEmails(notification) {
     try {
-      logger.info('=== INICIO PROCESAMIENTO EMAIL ===');
-      logger.info('1. Inicializando Gmail...');
+      await this.ensureInitialized();
       
-      if (!this.gmail) {
-        await this.setupGmail();
-      }
-
-      const historyId = notification.historyId;
-      logger.info('2. Obteniendo historial desde:', { historyId });
-
       const response = await this.gmail.users.history.list({
         userId: this.userEmail,
-        startHistoryId: historyId,
+        startHistoryId: notification.historyId,
         historyTypes: ['messageAdded']
       });
 
-      logger.info('3. Respuesta de Gmail:', {
-        hasHistory: !!response.data.history,
-        historyLength: response.data.history?.length,
-        response: response.data
-      });
-
-      if (!response.data.history) {
-        logger.info('No hay mensajes nuevos');
-        return;
-      }
+      if (!response.data.history) return;
 
       for (const history of response.data.history) {
-        logger.info('4. Procesando historia:', {
-          historyId: history.id,
-          messagesAdded: history.messagesAdded?.length
-        });
-
         for (const message of history.messagesAdded || []) {
-          logger.info('5. Procesando mensaje:', {
-            messageId: message.message.id,
-            threadId: message.message.threadId
-          });
           const messageId = message.message.id;
-          logger.info('6. Procesando mensaje:', { messageId });
-
-          if (await this.isMessageProcessed(messageId)) {
-            logger.info('7. Mensaje ya procesado, saltando');
-            continue;
-          }
-
+          
+          if (await this.isMessageProcessed(messageId)) continue;
+          
           try {
-            logger.info('8. Creando ticket para mensaje:', messageId);
-            const ticket = await this.handleNewEmail(messageId);
-            logger.info('9. Ticket creado:', {
-              ticketId: ticket.id,
-              messageId: messageId
-            });
-            
+            await this.handleNewEmail(messageId);
             await this.markMessageAsProcessed(messageId);
-            logger.info('10. Mensaje marcado como procesado');
           } catch (error) {
-            logger.error('Error procesando mensaje:', {
-              messageId,
-              error: error.message,
-              stack: error.stack
-            });
+            logger.error('Error procesando mensaje:', { messageId, error: error.message });
           }
         }
       }
-
-      logger.info('=== FIN PROCESAMIENTO EMAIL ===');
     } catch (error) {
-      logger.error('Error general procesando emails:', {
-        error: error.message,
-        stack: error.stack
-      });
+      logger.error('Error procesando emails:', error);
       throw error;
     }
   }
