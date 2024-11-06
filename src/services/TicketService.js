@@ -1,6 +1,6 @@
 const logger = require('../utils/logger');
 const { getModels } = require('../config/database');
-const ApiError = require('../utils/ApiError');
+const ApiError = require('../utils/apiError');
 
 class TicketService {
   constructor() {
