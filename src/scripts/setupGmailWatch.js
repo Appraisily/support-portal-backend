@@ -32,7 +32,9 @@ async function setup() {
     // 5. Verificar permisos de Pub/Sub
     const pubsub = new PubSub();
     const [topics] = await pubsub.getTopics();
-    console.log('Available topics:', topics.map(t => t.name));
+    logger.info('Available topics:', {
+      topics: topics.map(t => t.name)
+    });
 
     // 6. Configurar watch
     const response = await gmail.users.watch({
@@ -44,9 +46,15 @@ async function setup() {
       }
     });
 
-    console.log('Watch setup successful:', response.data);
+    logger.info('Watch setup successful:', {
+      historyId: response.data.historyId,
+      expiration: response.data.expiration
+    });
   } catch (error) {
-    console.error('Setup failed:', error);
+    logger.error('Setup failed:', {
+      error: error.message,
+      stack: error.stack
+    });
     throw error;
   }
 }

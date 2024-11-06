@@ -14,13 +14,28 @@ class TicketService {
 
     this.initPromise = (async () => {
       try {
-        logger.info('Inicializando TicketService...');
-        // Esperar a que los modelos estén disponibles
-        await getModels();
+        logger.info('Initializing TicketService', {
+          timestamp: new Date().toISOString(),
+          environment: process.env.NODE_ENV
+        });
+
+        const models = await getModels();
+        logger.info('Models loaded for TicketService', {
+          availableModels: Object.keys(models),
+          hasRequiredModels: {
+            Ticket: !!models.Ticket,
+            Customer: !!models.Customer,
+            Message: !!models.Message
+          }
+        });
+
         this.initialized = true;
-        logger.info('TicketService inicializado correctamente');
+        logger.info('TicketService initialized successfully');
       } catch (error) {
-        logger.error('Error inicializando TicketService:', error);
+        logger.error('TicketService initialization failed', {
+          error: error.message,
+          stack: error.stack
+        });
         throw error;
       }
     })();
@@ -183,65 +198,146 @@ class TicketService {
 
   async getTicketById(id) {
     await this.initialize();
-    const models = await getModels();
-    const ticket = await models.Ticket.findByPk(id, {
-      include: [
-        {
-          model: models.Message,
-          as: 'messages'
-        },
-        {
-          model: models.Attachment,
-          as: 'attachments'
-        }
-      ]
-    });
+    try {
+      logger.info('Getting ticket by ID', { ticketId: id });
+      
+      const models = await getModels();
+      const ticket = await models.Ticket.findByPk(id, {
+        include: [
+          {
+            model: models.Message,
+            as: 'messages'
+          },
+          {
+            model: models.Attachment,
+            as: 'attachments'
+          }
+        ]
+      });
 
-    if (!ticket) {
-      throw new ApiError(404, 'Ticket not found');
+      if (!ticket) {
+        logger.warn('Ticket not found', { ticketId: id });
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      logger.info('Ticket retrieved successfully', {
+        ticketId: id,
+        status: ticket.status,
+        messageCount: ticket.messages?.length || 0,
+        attachmentCount: ticket.attachments?.length || 0
+      });
+
+      return ticket;
+    } catch (error) {
+      logger.error('Error getting ticket by ID', {
+        ticketId: id,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
     }
-
-    return ticket;
   }
 
   async createTicket(ticketData) {
     await this.initialize();
     try {
+      logger.info('Creating new ticket', {
+        subject: ticketData.subject,
+        category: ticketData.category,
+        priority: ticketData.priority,
+        customerId: ticketData.customerId
+      });
+
       const models = await getModels();
       const ticket = await models.Ticket.create(ticketData);
-      logger.info(`New ticket created with ID: ${ticket.id}`);
+
+      logger.info('Ticket created successfully', {
+        ticketId: ticket.id,
+        status: ticket.status,
+        priority: ticket.priority,
+        customerId: ticket.customerId
+      });
+
       return ticket;
     } catch (error) {
-      logger.error('Error creating ticket:', error);
+      logger.error('Error creating ticket', {
+        error: error.message,
+        stack: error.stack,
+        ticketData: JSON.stringify(ticketData)
+      });
       throw error;
     }
   }
 
   async updateTicket(id, updates) {
     await this.initialize();
-    const models = await getModels();
-    const ticket = await models.Ticket.findByPk(id);
+    try {
+      logger.info('Updating ticket', {
+        ticketId: id,
+        updates: JSON.stringify(updates)
+      });
 
-    if (!ticket) {
-      throw new ApiError(404, 'Ticket not found');
+      const models = await getModels();
+      const ticket = await models.Ticket.findByPk(id);
+
+      if (!ticket) {
+        logger.warn('Ticket not found for update', { ticketId: id });
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      const oldStatus = ticket.status;
+      await ticket.update(updates);
+
+      logger.info('Ticket updated successfully', {
+        ticketId: id,
+        oldStatus,
+        newStatus: ticket.status,
+        updatedFields: Object.keys(updates)
+      });
+      
+      return ticket;
+    } catch (error) {
+      logger.error('Error updating ticket', {
+        ticketId: id,
+        error: error.message,
+        stack: error.stack,
+        updates: JSON.stringify(updates)
+      });
+      throw error;
     }
-
-    await ticket.update(updates);
-    logger.info(`Ticket ${id} updated`);
-    
-    return ticket;
   }
 
   async addMessage(ticketId, messageData) {
     await this.initialize();
-    const models = await getModels();
-    const ticket = await this.getTicketById(ticketId);
-    const message = await models.Message.create({
-      ...messageData,
-      ticketId: ticket.id
-    });
-    
-    return message;
+    try {
+      logger.info('Adding message to ticket', {
+        ticketId,
+        hasContent: !!messageData.content,
+        hasAttachments: !!messageData.attachments
+      });
+
+      const models = await getModels();
+      const ticket = await this.getTicketById(ticketId);
+      const message = await models.Message.create({
+        ...messageData,
+        ticketId: ticket.id
+      });
+
+      logger.info('Message added successfully', {
+        ticketId,
+        messageId: message.id,
+        type: message.type
+      });
+      
+      return message;
+    } catch (error) {
+      logger.error('Error adding message to ticket', {
+        ticketId,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
   }
 
   async createTicketFromEmail(emailData) {

@@ -509,19 +509,31 @@ class GmailService {
 
   async processEmail(messageId) {
     try {
-      logger.info(`Processing email ${messageId}`);
-      // ... código existente ...
+      logger.info('Processing email', { messageId });
       
-      // Añadir más logs
-      logger.info('Email processed successfully:', {
+      const emailData = await this.fetchEmailData(messageId);
+      logger.info('Email data fetched', {
         subject: emailData.subject,
         from: emailData.from,
         threadId: emailData.threadId,
         hasAttachments: emailData.attachments?.length > 0
       });
 
+      const ticket = await this.handleNewEmail(emailData);
+      
+      logger.info('Email processed successfully', {
+        messageId,
+        ticketId: ticket.id,
+        status: ticket.status
+      });
+
+      return ticket;
     } catch (error) {
-      logger.error('Error processing email:', error);
+      logger.error('Error processing email', {
+        messageId,
+        error: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
@@ -570,51 +582,31 @@ class GmailService {
 
   async _processHistoryItems(historyItems) {
     try {
+      logger.info('Processing history items', {
+        itemCount: historyItems.length
+      });
+
       let processedCount = 0;
-      
-      for (const history of historyItems) {
-        for (const message of history.messages || []) {
-          // Verificar si ya procesamos este mensaje
-          if (await this.isMessageProcessed(message.id)) {
-            logger.info(`Message ${message.id} already processed, skipping`);
-            continue;
+      for (const item of historyItems) {
+        if (item.messagesAdded) {
+          for (const message of item.messagesAdded) {
+            if (!(await this.isMessageProcessed(message.message.id))) {
+              await this.processEmail(message.message.id);
+              await this.markMessageAsProcessed(message.message.id);
+              processedCount++;
+            }
           }
-
-          // Obtener detalles completos del mensaje
-          const messageDetails = await this.gmail.users.messages.get({
-            userId: 'me',
-            id: message.id,
-            format: 'full'
-          });
-
-          // Extraer datos del email
-          const emailData = {
-            messageId: message.id,
-            threadId: message.threadId,
-            ...this.extractEmailData(messageDetails.data)
-          };
-
-          logger.info('Processing new email:', {
-            messageId: emailData.messageId,
-            subject: emailData.subject,
-            from: emailData.from
-          });
-
-          // Crear o actualizar ticket
-          await this.handleNewEmail(emailData);
-          
-          // Marcar como procesado
-          await this.markMessageAsProcessed(message.id);
-          
-          processedCount++;
         }
       }
 
-      logger.info(`Processed ${processedCount} messages from history items`);
-      return processedCount;
+      logger.info('History items processed', {
+        totalItems: historyItems.length,
+        processedCount
+      });
 
+      return processedCount
     } catch (error) {
-      logger.error('Error processing history items:', {
+      logger.error('Error processing history items', {
         error: error.message,
         stack: error.stack
       });

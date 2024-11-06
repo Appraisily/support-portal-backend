@@ -42,3 +42,22 @@ exports.handleWebhook = async (req, res) => {
     res.status(200).send('Error processed');
   }
 };
+
+exports.healthCheck = async (req, res) => {
+  try {
+    logger.info('Gmail health check initiated');
+    
+    const gmailService = new GmailService();
+    const status = await gmailService.testConnection();
+    
+    logger.info('Gmail health check completed', { status });
+    
+    res.json({ status });
+  } catch (error) {
+    logger.error('Gmail health check failed', {
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ error: 'Gmail service health check failed' });
+  }
+};
