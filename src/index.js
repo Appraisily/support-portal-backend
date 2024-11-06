@@ -13,24 +13,25 @@ async function startServer() {
   try {
     // 1. Cargar secretos en producción
     if (process.env.NODE_ENV === 'production') {
-      logger.info('Loading secrets from Secret Manager...');
+      logger.info('Loading secrets...');
       await secretManager.loadSecrets();
       
-      // Añadir log para verificar los secretos de BD después de cargarlos
-      logger.info('Database credentials after loading secrets:', {
-        hasDBUser: !!process.env.DB_USER,
-        hasDBPassword: !!process.env.DB_PASSWORD,
-        hasDBName: !!process.env.DB_NAME,
-        hasDBHost: !!process.env.DB_HOST,
-        hasDBPort: !!process.env.DB_PORT,
-        hasConnectionName: !!process.env.CLOUD_SQL_CONNECTION_NAME,
-        // Añadir los valores (sin mostrar contraseñas)
-        dbName: process.env.DB_NAME,
-        dbUser: process.env.DB_USER,
-        dbHost: process.env.DB_HOST,
-        dbPort: process.env.DB_PORT,
-        connectionName: process.env.CLOUD_SQL_CONNECTION_NAME
-      });
+      // Verificar que todos los secretos necesarios están cargados
+      const requiredEnvVars = [
+        'DB_USER',
+        'DB_PASSWORD',
+        'DB_NAME',
+        'DB_HOST',
+        'DB_PORT',
+        'CLOUD_SQL_CONNECTION_NAME'
+      ];
+
+      const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+      if (missingVars.length > 0) {
+        throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+      }
+
+      logger.info('All required secrets loaded');
     }
 
     // 2. Inicializar base de datos

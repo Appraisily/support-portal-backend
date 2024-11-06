@@ -29,19 +29,25 @@ class SecretManager {
     try {
       const requiredSecrets = [
         'GMAIL_REFRESH_TOKEN',
-        'jwt-secret'
-        // ... otros secretos necesarios
+        'jwt-secret',
+        'DB_USER',
+        'DB_PASSWORD',
+        'DB_NAME',
+        'DB_HOST',
+        'DB_PORT',
+        'CLOUD_SQL_CONNECTION_NAME'
       ];
 
       for (const secretName of requiredSecrets) {
         if (!this.secrets.has(secretName)) {
           const secret = await this._fetchSecret(secretName);
           this.secrets.set(secretName, secret);
+          process.env[secretName] = secret;
         }
       }
 
-      // Solo log una vez al inicializar
-      logger.info('Secrets initialized successfully');
+      this.initialized = true;
+      logger.info('All secrets loaded successfully');
     } catch (error) {
       logger.error('Failed to load secrets:', error);
       throw error;
