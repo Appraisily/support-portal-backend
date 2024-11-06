@@ -27,18 +27,33 @@ class SecretManager {
     if (this.initialized) return;
     
     try {
+      // ¡IMPORTANTE! No eliminar ningún secreto sin revisar todas las dependencias
+      // Estos secretos son utilizados por:
+      // - DB_* -> Conexión a base de datos
+      // - GMAIL_* -> Autenticación con Gmail API
+      // - ADMIN_* -> Autenticación de administrador
+      // - JWT_SECRET -> Generación de tokens de sesión
       const requiredSecrets = [
+        // Secretos para base de datos
         'DB_USER',
         'DB_PASSWORD',
         'DB_NAME',
         'DB_HOST',
         'DB_PORT',
         'CLOUD_SQL_CONNECTION_NAME',
+        
+        // Secretos para Gmail API
         'GMAIL_CLIENT_ID',
         'GMAIL_CLIENT_SECRET',
         'GMAIL_REFRESH_TOKEN',
+        
+        // Secretos para autenticación de admin
+        'ADMIN_EMAIL',    // Usado en authController.login
+        'ADMIN_PASSWORD', // Usado en authController.login
+        
+        // Secreto para JWT
         {
-          secretName: 'jwt-secret',
+          secretName: 'JWT_SECRET', // Usado en auth middleware y login
           envVar: 'JWT_SECRET'
         }
       ];

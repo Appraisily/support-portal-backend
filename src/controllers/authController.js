@@ -5,25 +5,47 @@ const logger = require('../utils/logger');
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    logger.info('Login attempt:', { email });
+    logger.info('Login attempt:', { 
+      email,
+      hasAdminEmail: !!process.env.ADMIN_EMAIL,
+      hasAdminPassword: !!process.env.ADMIN_PASSWORD
+    });
 
-    // IMPORTANTE: Estas credenciales vienen de Secret Manager y son para el frontend
-    // No confundir con las credenciales de DB_USER y DB_PASSWORD que son para la base de datos
+    // Verificar que tenemos las credenciales cargadas
+    if (!process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD) {
+      logger.error('Admin credentials not loaded');
+      throw new ApiError(500, 'Error de configuración del servidor');
+    }
+
     if (email !== process.env.ADMIN_EMAIL || password !== process.env.ADMIN_PASSWORD) {
-      logger.warn('Login failed: Invalid credentials');
+      logger.warn('Login failed:', { 
+        email,
+        invalidEmail: email !== process.env.ADMIN_EMAIL,
+        invalidPassword: password !== process.env.ADMIN_PASSWORD
+      });
       throw new ApiError(401, 'Credenciales inválidas');
+    }
+
+    // Verificar que tenemos el secreto JWT
+    if (!process.env.JWT_SECRET) {
+      logger.error('JWT_SECRET not loaded');
+      throw new ApiError(500, 'Error de configuración del servidor');
     }
 
     const token = jwt.sign(
       { 
-        id: '1',  // ID fijo para el admin
+        id: '1',
         role: 'admin'
       },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
-    logger.info(`Admin logged in successfully`);
+    logger.info('Admin logged in successfully:', {
+      email: process.env.ADMIN_EMAIL,
+      tokenGenerated: !!token
+    });
+
     res.json({
       token,
       user: {
@@ -34,6 +56,10 @@ exports.login = async (req, res, next) => {
       }
     });
   } catch (error) {
+    logger.error('Login error:', {
+      error: error.message,
+      stack: error.stack
+    });
     next(error);
   }
 };

@@ -44,50 +44,39 @@ exports.handleWebhook = async (req, res) => {
       return res.status(200).send('OK');
     }
 
-    try {
-      // Inicializar todo en orden
-      if (!appState.initialized) {
-        logger.info('Initializing application before processing webhook...');
-        await appState.initialize();
-      }
+    const notification = JSON.parse(
+      Buffer.from(req.body.message.data, 'base64').toString()
+    );
 
-      if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
-        logger.info('Loading secrets before processing webhook...');
-        await secretManager.loadSecrets();
-      }
+    logger.info('Received webhook notification:', {
+      historyId: notification.historyId,
+      emailAddress: notification.emailAddress,
+      raw: notification
+    });
 
-      const notification = JSON.parse(
-        Buffer.from(req.body.message.data, 'base64').toString()
-      );
-
-      // Verificar si es una notificación inicial de watch
-      if (notification.historyId === process.env.LAST_HISTORY_ID) {
-        logger.info('Ignoring initial watch notification');
-        return res.status(200).send('OK');
-      }
-
-      // Verificar si es una notificación de configuración
-      if (!notification.emailAddress || !notification.historyId) {
-        logger.info('Received watch setup confirmation:', notification);
-        return res.status(200).send('OK');
-      }
-
-      // Procesar notificación real de email
-      await GmailService.ensureInitialized();
-      if (await GmailService.isNotificationProcessed(notification.historyId)) {
-        logger.info(`Skipping processed notification: ${notification.historyId}`);
-        return res.status(200).send('OK');
-      }
-
-      await GmailService.processNewEmails(notification);
-      res.status(200).send('OK');
-    } catch (initError) {
-      logger.error('Initialization error:', initError);
-      return res.status(200).send('Initialization error');
+    // Si es una notificación de configuración inicial, solo logueamos y OK
+    if (!notification.emailAddress || !notification.historyId) {
+      logger.info('Received watch setup confirmation');
+      return res.status(200).send('OK');
     }
 
+    // Solo procesamos si parece una notificación real de email
+    const result = await GmailService.processNewEmails(notification);
+    logger.info('Email processing complete:', {
+      success: true,
+      emailsProcessed: result.processed,
+      ticketsCreated: result.tickets,
+      historyId: notification.historyId
+    });
+
+    res.status(200).send('OK');
+
   } catch (error) {
-    logger.error('Webhook error:', error);
+    logger.error('Webhook error:', {
+      error: error.message,
+      stack: error.stack,
+      notification: req.body?.message?.data
+    });
     res.status(200).send('Error processed');
   }
 };
