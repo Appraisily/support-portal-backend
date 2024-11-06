@@ -365,29 +365,33 @@ class GmailService {
   }
 
   async ensureInitialized() {
-    if (this.initialized) return;
-    if (this.initPromise) return this.initPromise;
+    if (!this.initialized) {
+      logger.info('Gmail service not initialized, setting up...');
+      await this.setupGmail();
+    }
 
-    this.initPromise = (async () => {
-      try {
-        // 1. Cargar secretos si es necesario
-        if (process.env.NODE_ENV === 'production' && !secretManager.initialized) {
-          logger.info('Loading secrets in Gmail service...');
-          await secretManager.loadSecrets();
-        }
+    if (!this.gmail) {
+      logger.error('Gmail client not available after initialization');
+      throw new Error('Gmail client not available');
+    }
 
-        // 2. Inicializar Gmail
-        await this.setupGmail();
-
-        this.initialized = true;
-        logger.info('Gmail service fully initialized');
-      } catch (error) {
-        this.initPromise = null;
-        throw error;
-      }
-    })();
-
-    return this.initPromise;
+    // Verificar que podemos acceder a Gmail
+    try {
+      const profile = await this.gmail.users.getProfile({
+        userId: 'me'
+      });
+      logger.info('Gmail access verified:', {
+        email: profile.data.emailAddress,
+        messagesTotal: profile.data.messagesTotal,
+        threadsTotal: profile.data.threadsTotal
+      });
+    } catch (error) {
+      logger.error('Gmail access verification failed:', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
   }
 
   async processNewEmails(notification) {
@@ -395,41 +399,44 @@ class GmailService {
       logger.info('Starting to process new emails:', {
         notification: JSON.stringify(notification),
         historyId: notification.historyId,
-        emailAddress: notification.emailAddress
+        emailAddress: notification.emailAddress,
+        userEmail: this.userEmail
       });
       
       // Asegurar inicialización antes de procesar
       await this.ensureInitialized();
       
-      const response = await this.gmail.users.history.list({
-        userId: this.userEmail,
+      // Obtener historial desde Gmail
+      const historyResponse = await this.gmail.users.history.list({
+        userId: 'me',
         startHistoryId: notification.historyId,
         historyTypes: ['messageAdded']
       });
 
-      logger.info('History list response:', {
-        hasHistory: !!response.data.history,
-        historyId: notification.historyId,
-        historySize: response.data.history?.length || 0,
-        response: JSON.stringify(response.data)
+      logger.info('Raw Gmail history response:', {
+        data: JSON.stringify(historyResponse.data),
+        status: historyResponse.status,
+        headers: historyResponse.headers
       });
 
-      if (!response.data.history) {
+      if (!historyResponse.data.history) {
         logger.info(`No new messages since ${notification.historyId}`, {
           historyId: notification.historyId,
-          emailAddress: notification.emailAddress
+          emailAddress: notification.emailAddress,
+          responseData: JSON.stringify(historyResponse.data)
         });
         return { processed: 0, tickets: 0 };
       }
 
-      const processedCount = await this._processHistoryItems(response.data.history);
-      logger.info(`Processed ${processedCount} new messages`, {
+      // Procesar los mensajes nuevos
+      const processedCount = await this._processHistoryItems(historyResponse.data.history);
+      
+      logger.info('Email processing results:', {
         processedCount,
         historyId: notification.historyId,
-        historySize: response.data.history.length
+        historySize: historyResponse.data.history.length,
+        emailAddress: notification.emailAddress
       });
-      
-      await this.markNotificationAsProcessed(notification.historyId);
 
       return {
         processed: processedCount,
@@ -442,7 +449,9 @@ class GmailService {
         error: error.message,
         stack: error.stack,
         notification: JSON.stringify(notification),
-        type: error.constructor.name
+        type: error.constructor.name,
+        gmailInitialized: this.initialized,
+        hasGmailClient: !!this.gmail
       });
       throw error;
     }
