@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
 const appState = require('../utils/singleton');
+const { Op } = require('sequelize');
 
 class GmailService {
   constructor() {
@@ -499,6 +500,54 @@ class GmailService {
 
     } catch (error) {
       logger.error('Error processing email:', error);
+      throw error;
+    }
+  }
+
+  async isNotificationProcessed(historyId) {
+    try {
+      const models = await appState.getModels();
+      const processedNotification = await models.Setting.findOne({
+        where: { 
+          key: 'processed_notification',
+          value: historyId.toString()
+        }
+      });
+      
+      if (processedNotification) {
+        logger.debug(`Notification ${historyId} already processed`);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      logger.error('Error checking processed notification:', error);
+      return false; // En caso de error, procesamos por seguridad
+    }
+  }
+
+  async markNotificationAsProcessed(historyId) {
+    try {
+      const models = await appState.getModels();
+      await models.Setting.create({
+        key: 'processed_notification',
+        value: historyId.toString(),
+        createdAt: new Date()
+      });
+      
+      // Limpiar notificaciones antiguas (más de 1 día)
+      await models.Setting.destroy({
+        where: {
+          key: 'processed_notification',
+          createdAt: {
+            [Op.lt]: new Date(Date.now() - 24 * 60 * 60 * 1000)
+          }
+        }
+      });
+
+      logger.debug(`Marked notification ${historyId} as processed`);
+    } catch (error) {
+      logger.error('Error marking notification as processed:', error);
       throw error;
     }
   }
