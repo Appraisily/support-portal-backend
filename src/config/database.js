@@ -35,7 +35,7 @@ const initializeDatabase = async () => {
       } else {
         sequelize = new Sequelize({
           dialect: 'sqlite',
-          storage: ':memory:',
+          storage: './dev.sqlite',
           logging: false
         });
       }

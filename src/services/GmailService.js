@@ -350,6 +350,7 @@ class GmailService {
           customerId: customer.id,
           gmailThreadId: emailData.threadId,
           gmailMessageId: emailData.messageId,
+          category: 'email',
           lastMessageAt: new Date()
         });
 
@@ -523,6 +524,25 @@ class GmailService {
     } catch (error) {
       logger.error('Error updating last history ID:', error);
       throw error; // Propagar el error para mejor manejo
+    }
+  }
+
+  async processEmail(messageId) {
+    try {
+      logger.info(`Processing email ${messageId}`);
+      // ... código existente ...
+      
+      // Añadir más logs
+      logger.info('Email processed successfully:', {
+        subject: emailData.subject,
+        from: emailData.from,
+        threadId: emailData.threadId,
+        hasAttachments: emailData.attachments?.length > 0
+      });
+
+    } catch (error) {
+      logger.error('Error processing email:', error);
+      throw error;
     }
   }
 }

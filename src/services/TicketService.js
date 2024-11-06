@@ -47,12 +47,13 @@ class TicketService {
       logger.info('Getting models...');
       const models = await getModels();
 
-      logger.info('Executing findAndCountAll with query:', { query, page, limit });
-
-      if (!models.Ticket) {
-        logger.error('Ticket model not found');
-        throw new Error('Ticket model not found');
-      }
+      logger.info('Listing tickets with filters:', {
+        filters,
+        pagination,
+        query,
+        includeModels: models.Customer ? true : false,
+        includeMessages: models.Message ? true : false
+      });
 
       const tickets = await models.Ticket.findAndCountAll({
         where: query,
@@ -64,7 +65,9 @@ class TicketService {
           },
           {
             model: models.Message,
-            as: 'messages'
+            as: 'messages',
+            limit: 1,
+            order: [['createdAt', 'DESC']]
           }
         ],
         order: [[sort, order]],
@@ -72,9 +75,11 @@ class TicketService {
         offset: (page - 1) * limit
       });
 
-      logger.info('Query executed successfully:', { 
-        count: tickets.count,
-        rowCount: tickets.rows.length 
+      logger.info('Tickets found:', {
+        total: tickets.count,
+        returned: tickets.rows.length,
+        hasCustomers: tickets.rows.some(t => t.customer),
+        hasMessages: tickets.rows.some(t => t.messages?.length > 0)
       });
 
       return {

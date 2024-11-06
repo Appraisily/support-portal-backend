@@ -3,15 +3,21 @@ const TicketService = require('../services/TicketService');
 const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
 const { getModels } = require('../config/database');
+const secretManager = require('../utils/secretManager');
 
-exports.handleWebhook = async (req, res, next) => {
+exports.handleWebhook = async (req, res) => {
   try {
     logger.info('=== INICIO WEBHOOK GMAIL ===');
     
-    logger.info('1. Webhook recibido:', { 
-      body: req.body,
-      headers: req.headers 
-    });
+    // 1. Asegurarnos de que la aplicación está inicializada
+    if (process.env.NODE_ENV === 'production') {
+      await secretManager.loadSecrets();
+    }
+    await getModels();
+    await GmailService.setupGmail();
+
+    // 2. Procesar el webhook
+    logger.info('1. Webhook recibido:', { body: req.body, headers: req.headers });
 
     // Validar IP de Google
     const googleIPs = ['66.249.93.', '142.250.', '35.191.'];
@@ -48,14 +54,11 @@ exports.handleWebhook = async (req, res, next) => {
     }
 
     logger.info('=== FIN WEBHOOK GMAIL ===');
-    res.status(200).json({ success: true });
+    res.status(200).send('OK');
   } catch (error) {
-    logger.error('ERROR en webhook Gmail:', {
-      error: error.message,
-      stack: error.stack
-    });
+    logger.error('Error en webhook Gmail:', error);
     // Siempre devolver 200 a Google para evitar reintentos
-    res.status(200).json({ success: false, error: error.message });
+    res.status(200).send('Error processed');
   }
 };
 
