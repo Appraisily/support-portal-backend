@@ -414,24 +414,17 @@ class GmailService {
         historyTypes: ['messageAdded']
       });
 
-      if (!response.data.history) return;
-
-      for (const history of response.data.history) {
-        for (const message of history.messagesAdded || []) {
-          const messageId = message.message.id;
-          
-          if (await this.isMessageProcessed(messageId)) continue;
-          
-          try {
-            await this.handleNewEmail(messageId);
-            await this.markMessageAsProcessed(messageId);
-          } catch (error) {
-            logger.error('Error procesando mensaje:', { messageId, error: error.message });
-          }
-        }
+      if (!response.data.history) {
+        logger.debug(`No new messages since ${notification.historyId}`);
+        return;
       }
+
+      const processedCount = await this._processHistoryItems(response.data.history);
+      logger.info(`Processed ${processedCount} new messages`);
+      
+      await this.markNotificationAsProcessed(notification.historyId);
     } catch (error) {
-      logger.error('Error procesando emails:', error);
+      logger.error('Failed to process emails:', error);
       throw error;
     }
   }
