@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 const { getModels } = require('../config/database');
-const bcrypt = require('bcryptjs');
+const bcryptjs = require('bcryptjs');
 
 exports.login = async (req, res, next) => {
   try {
@@ -25,7 +25,7 @@ exports.login = async (req, res, next) => {
       attributes: ['id', 'email', 'password', 'role', 'name']
     });
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!user || !(await bcryptjs.compare(password, user.password))) {
       logger.warn('Login failed: invalid credentials', { email });
       return res.status(401).json({
         success: false,

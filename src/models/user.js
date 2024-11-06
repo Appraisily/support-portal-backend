@@ -1,5 +1,5 @@
 const { DataTypes } = require('sequelize');
-const bcrypt = require('bcryptjs');
+const bcryptjs = require('bcryptjs');
 
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
@@ -20,8 +20,8 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false,
       set(value) {
-        const salt = bcrypt.genSaltSync(10);
-        const hash = bcrypt.hashSync(value, salt);
+        const salt = bcryptjs.genSaltSync(10);
+        const hash = bcryptjs.hashSync(value, salt);
         this.setDataValue('password', hash);
       }
     },
@@ -58,7 +58,7 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   User.prototype.comparePassword = async function(candidatePassword) {
-    return bcrypt.compare(candidatePassword, this.password);
+    return bcryptjs.compare(candidatePassword, this.password);
   };
 
   return User;
