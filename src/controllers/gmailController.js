@@ -1,18 +1,27 @@
 const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
 
-// Crear una instancia singleton
-const gmailService = new GmailService();
+// No crear la instancia inmediatamente
+let gmailService = null;
+
+// Función helper para obtener/inicializar el servicio
+const getGmailService = async () => {
+  if (!gmailService) {
+    gmailService = new GmailService();
+    await gmailService.ensureInitialized();
+  }
+  return gmailService;
+};
 
 exports.handleWebhook = async (req, res) => {
   const startTime = Date.now();
   try {
-    await gmailService.ensureInitialized();
+    const service = await getGmailService();
     
     // Validar el cuerpo de la solicitud
     if (!req.body?.message?.data) {
       logger.warn('Invalid webhook data', { 
-        body: JSON.stringify(req.body),
+        body: req.body,
         hasMessage: !!req.body?.message 
       });
       return res.status(200).send('OK - Invalid data');
@@ -35,7 +44,7 @@ exports.handleWebhook = async (req, res) => {
       return res.status(200).send('OK - Invalid notification');
     }
 
-    const result = await gmailService.processNewEmails(notification);
+    const result = await service.processNewEmails(notification);
     
     logger.info('Webhook processed successfully', {
       historyId: notification.historyId,
@@ -60,7 +69,8 @@ exports.healthCheck = async (req, res) => {
   try {
     logger.info('Gmail health check initiated');
     
-    const status = await gmailService.testConnection();
+    const service = await getGmailService();
+    const status = await service.testConnection();
     
     logger.info('Gmail health check completed', { status });
     

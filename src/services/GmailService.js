@@ -7,10 +7,6 @@ const { getModels } = require('../config/database');
 
 class GmailService {
   constructor() {
-    if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET) {
-      throw new Error('Gmail credentials not configured');
-    }
-    
     this.userEmail = process.env.GMAIL_USER_EMAIL || 'info@appraisily.com';
     this.gmail = null;
     this.initialized = false;
@@ -387,55 +383,20 @@ class GmailService {
   }
 
   async ensureInitialized() {
-    if (this.initialized && this.models?.Setting) {
-      return true;
+    if (this.initialized) {
+      return;
     }
 
-    if (this.initPromise) {
-      return this.initPromise;
+    if (!this.initPromise) {
+      this.initPromise = this.setupGmail();
     }
 
-    this.initPromise = (async () => {
-      try {
-        // Obtener modelos
-        const models = await getModels();
-        
-        if (!models?.Setting) {
-          throw new Error('Setting model not available after initialization');
-        }
-
-        this.models = models;
-        
-        // Configurar Gmail
-        await this.setupGmail();
-        
-        // Obtener último historyId
-        this.lastHistoryId = await this.models.Setting.getHistoryId();
-        
-        this.initialized = true;
-        logger.info('Gmail service initialized successfully', {
-          hasModels: !!this.models,
-          hasGmail: !!this.gmail,
-          lastHistoryId: this.lastHistoryId
-        });
-        
-        return true;
-      } catch (error) {
-        logger.error('Failed to initialize Gmail service', {
-          error: error.message,
-          stack: error.stack,
-          hasModels: !!this.models,
-          hasGmail: !!this.gmail
-        });
-        this.initialized = false;
-        this.models = null;
-        throw error;
-      } finally {
-        this.initPromise = null;
-      }
-    })();
-
-    return this.initPromise;
+    try {
+      await this.initPromise;
+    } catch (error) {
+      this.initPromise = null;
+      throw error;
+    }
   }
 
   async processNewEmails(notification) {
