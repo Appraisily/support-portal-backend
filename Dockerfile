@@ -11,16 +11,26 @@ CMD ["npm", "run", "dev"]
 
 # Production stage
 FROM base as production
-RUN npm ci --only=production
+# Install production dependencies and sequelize-cli globally
+RUN npm ci --only=production && \
+    npm install -g sequelize-cli
+
 COPY . .
 
 # Create directory for Cloud SQL
 RUN mkdir -p /cloudsql && \
     chown -R node:node /cloudsql
 
-# Run migrations during build
-RUN npm run migrate
+# Set production environment variables
+ENV NODE_ENV=production
 
+# Switch to non-root user
 USER node
+
 EXPOSE 8080
-CMD ["node", "src/index.js"]
+
+# Use a shell script to run migrations and start the app
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]
