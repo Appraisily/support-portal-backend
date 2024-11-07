@@ -106,6 +106,10 @@ const initializeDatabase = async () => {
     // Reintentar en desarrollo
     if (process.env.NODE_ENV !== 'production') {
       logger.info('Retrying database connection in 5 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      return initializeDatabase();
+    }
+    
     throw error;
   }
 };
