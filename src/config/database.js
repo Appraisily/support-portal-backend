@@ -12,7 +12,7 @@ const initializeDatabase = async () => {
 
   try {
     await secretManager.ensureInitialized();
-    logger.info('Iniciando conexión a base de datos...');
+    logger.info('Initializing database connection...');
 
     // Get database configuration
     const dbConfig = {
@@ -44,21 +44,19 @@ const initializeDatabase = async () => {
       logging: (msg) => logger.debug('Sequelize:', { query: msg })
     };
 
-    // In production, use Unix Domain Socket
+    // In production, use Unix Domain Socket without SSL
     if (process.env.NODE_ENV === 'production') {
       config.host = `/cloudsql/${dbConfig.instanceName}`;
       config.dialectOptions = {
-        socketPath: `/cloudsql/${dbConfig.instanceName}`
+        socketPath: `/cloudsql/${dbConfig.instanceName}`,
+        ssl: false // Explicitly disable SSL for Unix socket
       };
     } else {
-      // In development, use TCP with SSL
+      // In development, use TCP with SSL disabled (since it's disabled in the DB)
       config.host = await secretManager.getSecret('DB_HOST');
       config.port = await secretManager.getSecret('DB_PORT');
       config.dialectOptions = {
-        ssl: {
-          require: true,
-          rejectUnauthorized: false
-        }
+        ssl: false // Disable SSL since it's not enabled in the database
       };
     }
 
@@ -66,7 +64,11 @@ const initializeDatabase = async () => {
 
     // Test connection
     await sequelize.authenticate();
-    logger.info('Conexión a base de datos establecida correctamente');
+    logger.info('Database connection established successfully', {
+      database: dbConfig.database,
+      user: dbConfig.user,
+      instanceName: dbConfig.instanceName
+    });
 
     return sequelize;
   } catch (error) {
