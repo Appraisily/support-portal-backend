@@ -1,8 +1,6 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
-const appState = require('../utils/singleton');
 const { Op } = require('sequelize');
-const secretManager = require('../utils/secretManager');
 const { getModels } = require('../config/database');
 
 class GmailService {
@@ -20,69 +18,132 @@ class GmailService {
     });
   }
 
-  async setupGmail() {
+  async ensureInitialized() {
     if (this.initialized) {
-      logger.info('Gmail service already initialized');
       return;
     }
 
+    if (!this.initPromise) {
+      this.initPromise = Promise.all([
+        this.setupGmail(),
+        this.setupModels()
+      ]);
+    }
+
+    try {
+      await this.initPromise;
+      this.initialized = true;
+    } catch (error) {
+      this.initPromise = null;
+      logger.error('Gmail service initialization failed', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  async setupModels() {
+    try {
+      this.models = await getModels();
+      
+      if (!this.models?.Setting) {
+        throw new Error('Required models not available');
+      }
+
+      logger.info('Gmail service models initialized');
+    } catch (error) {
+      logger.error('Failed to initialize models', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  async setupGmail() {
     try {
       logger.info('Setting up Gmail with OAuth2...');
       
-      // Solo verificar las credenciales de OAuth2
       const requiredVars = [
         'GMAIL_CLIENT_ID', 
         'GMAIL_CLIENT_SECRET', 
         'GMAIL_REFRESH_TOKEN'
       ];
       
-      const missingVars = requiredVars.filter(varName => {
-        const value = process.env[varName];
-        if (!value) {
-          logger.error(`Missing ${varName} environment variable`);
-          return true;
-        }
-        return false;
-      });
+      const missingVars = requiredVars.filter(varName => !process.env[varName]);
       
       if (missingVars.length > 0) {
-        const error = new Error(`Missing required Gmail variables: ${missingVars.join(', ')}`);
-        logger.error('Gmail setup failed:', {
-          error: error.message,
-          missingVars
-        });
-        throw error;
+        throw new Error(`Missing required Gmail variables: ${missingVars.join(', ')}`);
       }
 
-      // Configurar OAuth2
       this.oauth2Client = new google.auth.OAuth2(
         process.env.GMAIL_CLIENT_ID,
         process.env.GMAIL_CLIENT_SECRET,
         'https://developers.google.com/oauthplayground'
       );
 
-      // Configurar credenciales
       this.oauth2Client.setCredentials({
         refresh_token: process.env.GMAIL_REFRESH_TOKEN
       });
 
-      // Crear cliente Gmail
       this.gmail = google.gmail({
         version: 'v1',
         auth: this.oauth2Client
       });
 
-      // Verificar la conexión
       const userInfo = await this.gmail.users.getProfile({
         userId: this.userEmail
       });
 
-      this.initialized = true;
-      logger.info('Gmail setup successful, acting as:', userInfo.data);
-      return userInfo.data;
+      logger.info('Gmail setup successful', {
+        email: userInfo.data.emailAddress,
+        messagesTotal: userInfo.data.messagesTotal,
+        threadsTotal: userInfo.data.threadsTotal
+      });
 
     } catch (error) {
-      logger.error('Gmail setup failed:', error);
+      logger.error('Gmail setup failed', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  async getLastHistoryId() {
+    try {
+      const setting = await this.models.Setting.findOne({
+        where: { key: 'gmail_last_history_id' },
+        order: [['createdAt', 'DESC']]
+      });
+      
+      return setting?.value ? parseInt(setting.value) : null;
+    } catch (error) {
+      logger.error('Error getting last history ID', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  async updateLastHistoryId(historyId) {
+    try {
+      await this.models.Setting.create({
+        key: 'gmail_last_history_id',
+        value: historyId.toString()
+      });
+      
+      this.lastHistoryId = historyId;
+      
+      logger.info('Updated last history ID', { historyId });
+    } catch (error) {
+      logger.error('Error updating last history ID', {
+        error: error.message,
+        stack: error.stack,
+        historyId
+      });
       throw error;
     }
   }
@@ -382,23 +443,6 @@ class GmailService {
     }
   }
 
-  async ensureInitialized() {
-    if (this.initialized) {
-      return;
-    }
-
-    if (!this.initPromise) {
-      this.initPromise = this.setupGmail();
-    }
-
-    try {
-      await this.initPromise;
-    } catch (error) {
-      this.initPromise = null;
-      throw error;
-    }
-  }
-
   async processNewEmails(notification) {
     const startTime = Date.now();
     try {
@@ -507,52 +551,6 @@ class GmailService {
     // No necesitamos hacer nada aquí porque el ticket ya se creó
     // en handleNewEmail con el messageId
     logger.info('Message marked as processed:', messageId);
-  }
-
-  async getLastHistoryId() {
-    try {
-      await this.ensureInitialized();
-      
-      if (!this.models?.Setting) {
-        throw new Error('Setting model not available');
-      }
-
-      return await this.models.Setting.getHistoryId();
-    } catch (error) {
-      logger.error('Error getting last history ID:', {
-        error: error.message,
-        stack: error.stack,
-        hasModels: !!this.models,
-        hasSettingModel: !!this.models?.Setting
-      });
-      throw error;
-    }
-  }
-
-  async updateLastHistoryId(historyId) {
-    try {
-      await this.ensureInitialized();
-      
-      if (!this.models?.Setting) {
-        throw new Error('Setting model not available');
-      }
-
-      await this.models.Setting.updateHistoryId(historyId);
-      
-      logger.info('Updated last history ID:', {
-        historyId,
-        timestamp: new Date().toISOString()
-      });
-    } catch (error) {
-      logger.error('Error updating last history ID:', {
-        error: error.message,
-        stack: error.stack,
-        historyId,
-        hasModels: !!this.models,
-        hasSettingModel: !!this.models?.Setting
-      });
-      throw error;
-    }
   }
 
   async processEmail(messageId) {

@@ -1,20 +1,18 @@
-const { google } = require('googleapis');
-const { PubSub } = require('@google-cloud/pubsub');
-const secretManager = require('../utils/secretManager');
 const logger = require('../utils/logger');
 const GmailService = require('../services/GmailService');
 
-const gmailService = new GmailService();
-
 async function setup() {
   const startTime = Date.now();
+  let gmailService = null;
+
   try {
-    // Validar variables de entorno
+    // Validar variables de entorno primero
     const requiredEnvVars = [
       'GMAIL_CLIENT_ID',
       'GMAIL_CLIENT_SECRET',
       'GMAIL_REFRESH_TOKEN',
-      'GOOGLE_CLOUD_PROJECT_ID'
+      'GOOGLE_CLOUD_PROJECT_ID',
+      'GMAIL_USER_EMAIL'
     ];
 
     const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -22,14 +20,20 @@ async function setup() {
       throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
     }
 
-    // Usar la instancia existente
+    // Inicializar el servicio
+    gmailService = new GmailService();
     await gmailService.ensureInitialized();
-    await gmailService.setupGmailWatch();
+
+    // Configurar el watch
+    const watchResult = await gmailService.setupGmailWatch();
 
     logger.info('Gmail watch setup completed', {
       historyId: gmailService.lastHistoryId,
+      watchResult,
       setupTime: Date.now() - startTime
     });
+
+    process.exit(0);
   } catch (error) {
     logger.error('Gmail watch setup failed', {
       error: error.message,
@@ -40,4 +44,13 @@ async function setup() {
   }
 }
 
-setup().catch(console.error); 
+// Manejar errores no capturados
+process.on('unhandledRejection', (error) => {
+  logger.error('Unhandled rejection in Gmail setup', {
+    error: error.message,
+    stack: error.stack
+  });
+  process.exit(1);
+});
+
+setup(); 

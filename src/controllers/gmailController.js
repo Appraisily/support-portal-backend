@@ -1,24 +1,32 @@
 const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
 
-// No crear la instancia inmediatamente
+// Singleton instance
 let gmailService = null;
 
-// Función helper para obtener/inicializar el servicio
 const getGmailService = async () => {
   if (!gmailService) {
     gmailService = new GmailService();
-    await gmailService.ensureInitialized();
   }
-  return gmailService;
+  
+  try {
+    await gmailService.ensureInitialized();
+    return gmailService;
+  } catch (error) {
+    logger.error('Failed to initialize Gmail service', {
+      error: error.message,
+      stack: error.stack
+    });
+    throw error;
+  }
 };
 
 exports.handleWebhook = async (req, res) => {
   const startTime = Date.now();
+  
   try {
     const service = await getGmailService();
     
-    // Validar el cuerpo de la solicitud
     if (!req.body?.message?.data) {
       logger.warn('Invalid webhook data', { 
         body: req.body,

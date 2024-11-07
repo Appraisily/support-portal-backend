@@ -1,100 +1,74 @@
-const { Sequelize, DataTypes } = require('sequelize');
+const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
 
-let sequelize;
-let models = {};
-let initialized = false;
-let initializationPromise = null;
+let sequelize = null;
+let models = null;
 
 const initializeDatabase = async () => {
-  if (initialized) return models;
-  
-  if (initializationPromise) {
-    return initializationPromise;
+  if (sequelize) {
+    return sequelize;
   }
 
-  initializationPromise = (async () => {
-    try {
-      logger.info('Iniciando conexión a base de datos...');
-      
-      // Configuración según ambiente
-      if (process.env.NODE_ENV === 'production') {
-        sequelize = new Sequelize(
-          process.env.DB_NAME,
-          process.env.DB_USER,
-          process.env.DB_PASSWORD,
-          {
-            dialect: 'postgres',
-            host: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME,
-            logging: (msg) => logger.debug(msg),
-            dialectOptions: {
-              socketPath: '/cloudsql/' + process.env.CLOUD_SQL_CONNECTION_NAME
-            }
-          }
-        );
-      } else {
-        sequelize = new Sequelize({
-          dialect: 'sqlite',
-          storage: './dev.sqlite',
-          logging: false
-        });
-      }
-
-      await sequelize.authenticate();
-      logger.info('Conexión a base de datos establecida correctamente');
-
-      // Cargar modelos
-      models = {
-        User: require('../models/user')(sequelize, DataTypes),
-        Customer: require('../models/customer')(sequelize, DataTypes),
-        Ticket: require('../models/ticket')(sequelize, DataTypes),
-        Message: require('../models/message')(sequelize, DataTypes),
-        Attachment: require('../models/attachment')(sequelize, DataTypes),
-        Setting: require('../models/setting')(sequelize, DataTypes)
-      };
-
-      // Verificar modelos
-      const missingModels = Object.entries(models)
-        .filter(([name, model]) => !model)
-        .map(([name]) => name);
-
-      if (missingModels.length > 0) {
-        throw new Error(`Failed to load models: ${missingModels.join(', ')}`);
-      }
-
-      // Configurar asociaciones
-      Object.keys(models).forEach(modelName => {
-        if (models[modelName].associate) {
-          models[modelName].associate(models);
+  try {
+    sequelize = new Sequelize(process.env.DATABASE_URL, {
+      logging: (msg) => logger.debug('Sequelize:', { query: msg }),
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
         }
-      });
-
-      // En desarrollo, sincronizar esquema
-      if (process.env.NODE_ENV !== 'production') {
-        await sequelize.sync();
-        logger.info('Database schema synchronized (DEVELOPMENT ONLY)');
       }
+    });
 
-      initialized = true;
-      return models;
+    await sequelize.authenticate();
+    logger.info('Database connection established');
 
-    } catch (error) {
-      initializationPromise = null;
-      logger.error('Error inicializando base de datos:', error);
-      throw error;
-    }
-  })();
+    return sequelize;
+  } catch (error) {
+    logger.error('Database connection failed', {
+      error: error.message,
+      stack: error.stack
+    });
+    throw error;
+  }
+};
 
-  return initializationPromise;
+const getModels = async () => {
+  if (models) {
+    return models;
+  }
+
+  try {
+    const sequelize = await initializeDatabase();
+    
+    // Importar modelos
+    const Setting = require('../models/Setting')(sequelize);
+    // ... otros modelos
+
+    models = {
+      Setting,
+      // ... otros modelos
+    };
+
+    // Asociaciones de modelos si es necesario
+    Object.values(models).forEach(model => {
+      if (model.associate) {
+        model.associate(models);
+      }
+    });
+
+    logger.info('Models initialized successfully');
+    return models;
+  } catch (error) {
+    logger.error('Failed to initialize models', {
+      error: error.message,
+      stack: error.stack
+    });
+    throw error;
+  }
 };
 
 module.exports = {
-  getModels: async () => {
-    if (!initialized) {
-      await initializeDatabase();
-    }
-    return models;
-  },
-  getSequelize: () => sequelize,
-  initializeDatabase
+  initializeDatabase,
+  getModels
 };

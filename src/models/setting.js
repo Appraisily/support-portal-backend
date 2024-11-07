@@ -1,55 +1,33 @@
-module.exports = (sequelize, DataTypes) => {
+const { DataTypes } = require('sequelize');
+
+module.exports = (sequelize) => {
   const Setting = sequelize.define('Setting', {
     id: {
-      type: DataTypes.INTEGER,
-      primaryKey: true,
-      autoIncrement: true
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true
     },
     key: {
       type: DataTypes.STRING,
       allowNull: false,
-      unique: true,
-      validate: {
-        notEmpty: true
-      }
+      unique: true
     },
     value: {
       type: DataTypes.TEXT,
-      allowNull: true
+      allowNull: false
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      allowNull: false
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      allowNull: false
     }
   }, {
-    timestamps: true,
     tableName: 'settings',
-    indexes: [
-      {
-        unique: true,
-        fields: ['key']
-      }
-    ]
+    timestamps: true
   });
-
-  // Añadir métodos estáticos para manejo de historyId
-  Setting.getHistoryId = async function() {
-    try {
-      const setting = await this.findOne({
-        where: { key: 'lastGmailHistoryId' }
-      });
-      return setting ? parseInt(setting.value) : null;
-    } catch (error) {
-      throw new Error(`Error getting historyId: ${error.message}`);
-    }
-  };
-
-  Setting.updateHistoryId = async function(historyId) {
-    try {
-      await this.upsert({
-        key: 'lastGmailHistoryId',
-        value: historyId.toString()
-      });
-    } catch (error) {
-      throw new Error(`Error updating historyId: ${error.message}`);
-    }
-  };
 
   return Setting;
 }; 
