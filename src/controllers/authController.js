@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
-const bcryptjs = require('bcryptjs');
 const secretManager = require('../utils/secretManager');
 
 exports.login = async (req, res, next) => {
@@ -14,31 +13,28 @@ exports.login = async (req, res, next) => {
       });
     }
 
-    logger.info('Login attempt', {
-      email,
-      hasCredentials: true
-    });
+    logger.info('Login attempt', { email });
 
-    // Obtener credenciales de admin desde Secret Manager
+    // Get admin credentials from Secret Manager
     const adminEmail = await secretManager.getSecret('ADMIN_EMAIL');
     const adminPassword = await secretManager.getSecret('ADMIN_PASSWORD');
+    const jwtSecret = await secretManager.getSecret('jwt-secret');
 
-    // Verificar si las credenciales coinciden con el admin
+    if (!adminEmail || !adminPassword || !jwtSecret) {
+      logger.error('Missing required secrets for authentication');
+      throw new Error('Authentication configuration missing');
+    }
+
+    // Verify credentials
     if (email !== adminEmail || password !== adminPassword) {
-      logger.warn('Login failed: invalid credentials', { email });
+      logger.warn('Invalid login credentials', { email });
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
       });
     }
 
-    // Verificar JWT_SECRET
-    const jwtSecret = await secretManager.getSecret('jwt-secret');
-    if (!jwtSecret) {
-      logger.error('JWT secret not found');
-      throw new Error('JWT configuration missing');
-    }
-
+    // Generate JWT token
     const token = jwt.sign(
       { 
         id: 'admin',
@@ -56,22 +52,19 @@ exports.login = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: {
-        user: {
-          id: 'admin',
-          email: adminEmail,
-          name: 'Administrator',
-          role: 'admin'
-        },
-        token
+      token,
+      user: {
+        id: 'admin',
+        email: adminEmail,
+        name: 'Administrator',
+        role: 'admin'
       }
     });
 
   } catch (error) {
     logger.error('Login error', {
       error: error.message,
-      stack: error.stack,
-      email: req.body.email
+      stack: error.stack
     });
     next(error);
   }
@@ -79,8 +72,6 @@ exports.login = async (req, res, next) => {
 
 exports.logout = async (req, res) => {
   try {
-    // Implementar lógica de logout si es necesario
-    // Por ejemplo, invalidar el token en una lista negra
     logger.info('User logged out', {
       userId: req.user?.id
     });

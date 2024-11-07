@@ -5,60 +5,47 @@ const routes = require('./routes');
 const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
 const { initializeDatabase } = require('./config/database');
-
-/*
-IMPORTANTE: ¡ORDEN DE INICIALIZACIÓN CRÍTICO!
-
-El orden correcto de inicialización debe ser:
-
-1. Secret Manager
-   - Necesario para obtener todas las credenciales
-   - Otros servicios dependen de estos secretos
-   - Sin esto, nada más puede funcionar correctamente
-
-2. Base de datos (Sequelize)
-   - Requiere secretos de DB_* del Secret Manager
-   - Necesario antes de que cualquier ruta que use modelos esté activa
-
-3. Servicios externos (Gmail, etc)
-   - Requieren credenciales del Secret Manager
-   - Dependen de la base de datos para almacenar estado
-
-4. Express y middlewares
-   - Algunos middlewares pueden requerir DB o servicios
-   - La autenticación necesita secretos JWT
-
-5. Rutas
-   - Dependen de todos los servicios anteriores
-   - No pueden funcionar sin DB y autenticación
-
-Si este orden no se respeta, obtendremos errores como:
-- "url must be string" (DB intentando inicializar sin secretos)
-- "jwt secret not found" (auth middleware sin Secret Manager)
-- "models is not defined" (rutas intentando usar DB no inicializada)
-*/
+const GmailService = require('./services/GmailService');
 
 async function startServer() {
   const startTime = Date.now();
   
   try {
-    // 1. Secret Manager primero
+    logger.info('Starting server initialization', {
+      environment: process.env.NODE_ENV,
+      nodeVersion: process.versions.node
+    });
+
+    // 1. Initialize Secret Manager
     await secretManager.ensureInitialized();
     logger.info('Secrets loaded successfully');
 
-    // 2. Base de datos después
+    // 2. Initialize Database
     await initializeDatabase();
-    logger.info('Database initialized successfully');
 
-    // 3. Express y middlewares
+    // 3. Express setup
     const app = express();
     app.set('trust proxy', true);
     app.use(cors());
     app.use(express.json());
-    
-    // 4. Rutas al final
+    logger.info('Express middleware configured');
+
+    // 4. Initialize Gmail Service
+    try {
+      logger.info('Initializing Gmail service');
+      await GmailService.ensureInitialized();
+    } catch (error) {
+      logger.error('Gmail service initialization failed', {
+        error: error.message,
+        stack: error.stack
+      });
+      // Continue even if Gmail fails - it's not critical for the whole app
+    }
+
+    // 5. Routes
     app.use('/api', routes);
-    
+    logger.info('API routes configured');
+
     // Error handler
     app.use((err, req, res, next) => {
       logger.error('Unhandled error', {
@@ -73,11 +60,12 @@ async function startServer() {
       });
     });
 
-    // 5. Iniciar servidor
+    // Start server
     const port = process.env.PORT || 8080;
     app.listen(port, () => {
-      logger.info(`Server started successfully`, {
+      logger.info('Server started successfully', {
         port,
+        environment: process.env.NODE_ENV,
         startupTimeMs: Date.now() - startTime
       });
     });
@@ -92,7 +80,7 @@ async function startServer() {
   }
 }
 
-// Manejar errores no capturados
+// Error handlers
 process.on('unhandledRejection', (error) => {
   logger.error('Unhandled rejection', {
     error: error.message,
