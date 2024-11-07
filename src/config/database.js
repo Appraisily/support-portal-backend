@@ -6,20 +6,22 @@ let sequelize = null;
 let models = null;
 
 /*
-IMPORTANTE: La base de datos debe inicializarse después de Secret Manager
-
-Dependencias:
-1. Requiere secretos DB_* de Secret Manager
-2. Debe estar lista antes de que las rutas se activen
-3. Servicios como Gmail necesitan la DB para:
-   - Almacenar historyId
-   - Guardar estado de webhooks
-   - Mantener configuración
+IMPORTANTE: Configuración de conexión a base de datos
 
 Errores comunes:
-- "url must be string": Secret Manager no inicializado
-- "connection refused": Credenciales incorrectas
-- "relation does not exist": Migrations no ejecutadas
+1. EAI_AGAIN: Problema de resolución DNS
+   - Verificar que el host es correcto
+   - Asegurarse que Cloud SQL Proxy está funcionando
+   - Comprobar conectividad de red
+
+2. connection refused: 
+   - Puerto incorrecto
+   - Firewall bloqueando conexión
+   - Instancia no está corriendo
+
+3. auth failed:
+   - Credenciales incorrectas
+   - Usuario no tiene permisos
 */
 
 const initializeDatabase = async () => {
@@ -28,44 +30,82 @@ const initializeDatabase = async () => {
   }
 
   try {
-    // Esperar a que los secretos estén disponibles
     await secretManager.ensureInitialized();
 
-    // Construir DATABASE_URL usando los secretos
-    const dbUser = await secretManager.getSecret('DB_USER');
-    const dbPassword = await secretManager.getSecret('DB_PASSWORD');
-    const dbName = await secretManager.getSecret('DB_NAME');
-    const dbHost = await secretManager.getSecret('DB_HOST');
-    const dbPort = await secretManager.getSecret('DB_PORT');
+    // Obtener y validar todos los secretos necesarios
+    const dbConfig = {
+      user: await secretManager.getSecret('DB_USER'),
+      password: await secretManager.getSecret('DB_PASSWORD'),
+      database: await secretManager.getSecret('DB_NAME'),
+      host: await secretManager.getSecret('DB_HOST'),
+      port: await secretManager.getSecret('DB_PORT'),
+      instanceName: await secretManager.getSecret('CLOUD_SQL_CONNECTION_NAME')
+    };
 
-    const databaseUrl = `postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}`;
-
-    logger.info('Initializing database connection', {
-      host: dbHost,
-      port: dbPort,
-      database: dbName,
-      user: dbUser
-    });
-
-    sequelize = new Sequelize(databaseUrl, {
-      logging: (msg) => logger.debug('Sequelize:', { query: msg }),
-      dialectOptions: {
-        ssl: {
-          require: true,
-          rejectUnauthorized: false
-        }
+    // Validar que tenemos todos los datos necesarios
+    Object.entries(dbConfig).forEach(([key, value]) => {
+      if (!value) {
+        throw new Error(`Missing database config: ${key}`);
       }
     });
 
+    logger.info('Initializing database connection', {
+      host: dbConfig.host,
+      port: dbConfig.port,
+      database: dbConfig.database,
+      user: dbConfig.user,
+      instanceName: dbConfig.instanceName
+    });
+
+    // Usar socket para Cloud SQL si está disponible
+    const dialectOptions = {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    };
+
+    if (process.env.NODE_ENV === 'production') {
+      dialectOptions.socketPath = `/cloudsql/${dbConfig.instanceName}`;
+    }
+
+    sequelize = new Sequelize({
+      dialect: 'postgres',
+      host: dbConfig.host,
+      port: dbConfig.port,
+      database: dbConfig.database,
+      username: dbConfig.user,
+      password: dbConfig.password,
+      dialectOptions,
+      pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      },
+      logging: (msg) => logger.debug('Sequelize:', { query: msg })
+    });
+
+    // Probar la conexión
     await sequelize.authenticate();
-    logger.info('Database connection established successfully');
+    
+    logger.info('Database connection established successfully', {
+      host: dbConfig.host,
+      database: dbConfig.database
+    });
 
     return sequelize;
   } catch (error) {
     logger.error('Database initialization failed', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
+      errorCode: error.original?.code,
+      errorDetail: error.original?.detail
     });
+    
+    // Reintentar en desarrollo
+    if (process.env.NODE_ENV !== 'production') {
+      logger.info('Retrying database connection in 5 seconds...');
     throw error;
   }
 };
