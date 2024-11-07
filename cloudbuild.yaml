@@ -34,14 +34,13 @@ steps:
       - '--add-cloudsql-instances'
       - '${_CLOUD_SQL_CONNECTION_NAME}'
       - '--set-env-vars'
-      - 'NODE_ENV=production,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID'
+      - 'NODE_ENV=production,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME}'
       - '--set-secrets'
       - >-
         DB_HOST=DB_HOST:latest,
         DB_NAME=DB_NAME:latest,
         DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
-        CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,
         JWT_SECRET=jwt-secret:latest
 
 images:
