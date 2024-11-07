@@ -25,40 +25,31 @@ async function startServer() {
     await initializeDatabase();
     logger.info('Database initialized successfully');
 
-    // 3. Express setup
+    // 3. Initialize Gmail Service
+    await GmailService.ensureInitialized();
+    logger.info('Gmail service initialized successfully');
+
+    // 4. Express setup
     const app = express();
     app.set('trust proxy', true);
     app.use(cors());
     app.use(express.json());
     
-    // 4. Routes
+    // 5. Routes
     app.use('/api', routes);
 
     // Error handler
     app.use(errorHandler);
 
-    // 5. Start server first
+    // 6. Start server
     const port = process.env.PORT || 8080;
-    const server = app.listen(port, () => {
+    app.listen(port, () => {
       logger.info('Server started successfully', {
         port,
         environment: process.env.NODE_ENV,
         startupTimeMs: Date.now() - startTime
       });
     });
-
-    // 6. Initialize Gmail Service after server is running
-    // This way if Gmail setup fails, the server is still running
-    if (process.env.NODE_ENV === 'production') {
-      try {
-        await GmailService.ensureInitialized();
-        logger.info('Gmail service initialized successfully');
-      } catch (error) {
-        logger.error('Gmail service initialization failed, but server continues running', {
-          error: error.message
-        });
-      }
-    }
 
   } catch (error) {
     logger.error('Server initialization failed', {

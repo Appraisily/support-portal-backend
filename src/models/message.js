@@ -1,28 +1,67 @@
+const { Model } = require('sequelize');
+
 module.exports = (sequelize, DataTypes) => {
-  const Message = sequelize.define('Message', {
+  class Message extends Model {
+    static associate(models) {
+      Message.belongsTo(models.Ticket, {
+        foreignKey: 'ticketId',
+        as: 'ticket'
+      });
+
+      Message.belongsTo(models.Customer, {
+        foreignKey: 'customerId',
+        as: 'customer'
+      });
+
+      Message.belongsTo(models.User, {
+        foreignKey: 'userId',
+        as: 'author'
+      });
+    }
+  }
+
+  Message.init({
     id: {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
+    ticketId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'Tickets',
+        key: 'id'
+      }
+    },
     content: {
       type: DataTypes.TEXT,
       allowNull: false
     },
-    author: {
-      type: DataTypes.STRING,
+    direction: {
+      type: DataTypes.ENUM('inbound', 'outbound'),
       allowNull: false
+    },
+    customerId: {
+      type: DataTypes.UUID,
+      references: {
+        model: 'Customers',
+        key: 'id'
+      }
+    },
+    userId: {
+      type: DataTypes.UUID,
+      references: {
+        model: 'Users',
+        key: 'id'
+      }
     }
   }, {
+    sequelize,
+    modelName: 'Message',
+    tableName: 'messages',
     timestamps: true
   });
-
-  Message.associate = (models) => {
-    Message.belongsTo(models.Ticket, {
-      foreignKey: 'ticketId',
-      as: 'ticket'
-    });
-  };
 
   return Message;
 };
