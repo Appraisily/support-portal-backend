@@ -17,9 +17,12 @@ RUN npm ci --only=production && \
 
 COPY . .
 
-# Create directory for Cloud SQL
+# Create directory for Cloud SQL and set up entrypoint
 RUN mkdir -p /cloudsql && \
-    chown -R node:node /cloudsql
+    chown -R node:node /cloudsql && \
+    cp docker-entrypoint.sh /usr/local/bin/ && \
+    chmod +x /usr/local/bin/docker-entrypoint.sh && \
+    chown node:node /usr/local/bin/docker-entrypoint.sh
 
 # Set production environment variables
 ENV NODE_ENV=production
@@ -28,9 +31,5 @@ ENV NODE_ENV=production
 USER node
 
 EXPOSE 8080
-
-# Use a shell script to run migrations and start the app
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["docker-entrypoint.sh"]
