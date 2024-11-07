@@ -6,28 +6,41 @@ class TicketService {
   constructor() {
     this.initialized = false;
     this.models = null;
+    this.initPromise = null;
   }
 
   async initialize() {
     if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
     
-    try {
-      const { models } = await getModels();
-      this.models = models;
-      
-      if (!this.models?.Ticket || !this.models?.Customer || !this.models?.Message) {
-        throw new Error('Required models not available');
+    this.initPromise = (async () => {
+      try {
+        this.models = await getModels();
+        
+        // Verify all required models exist
+        const requiredModels = ['Ticket', 'Customer', 'Message', 'User'];
+        const missingModels = requiredModels.filter(model => !this.models[model]);
+        
+        if (missingModels.length > 0) {
+          throw new Error(`Missing required models: ${missingModels.join(', ')}`);
+        }
+        
+        this.initialized = true;
+        logger.info('TicketService initialized successfully');
+      } catch (error) {
+        this.initialized = false;
+        this.models = null;
+        logger.error('Failed to initialize TicketService', {
+          error: error.message,
+          stack: error.stack
+        });
+        throw error;
+      } finally {
+        this.initPromise = null;
       }
-      
-      this.initialized = true;
-      logger.info('TicketService initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize TicketService', {
-        error: error.message,
-        stack: error.stack
-      });
-      throw error;
-    }
+    })();
+
+    return this.initPromise;
   }
 
   async ensureInitialized() {
@@ -50,7 +63,11 @@ class TicketService {
       const page = Math.max(1, parseInt(pagination.page) || 1);
       const limit = Math.max(1, Math.min(50, parseInt(pagination.limit) || 10));
 
-      logger.debug('Building ticket query', { filters, pagination });
+      logger.info('Listing tickets request:', {
+        filters: { status, priority },
+        pagination: { page, limit },
+        sorting: { sort, order }
+      });
 
       const query = {};
       if (status) query.status = status;
@@ -78,13 +95,7 @@ class TicketService {
         distinct: true
       });
 
-      logger.info('Tickets retrieved successfully', {
-        count: tickets.count,
-        page,
-        limit
-      });
-
-      return {
+      const result = {
         tickets: tickets.rows.map(ticket => ({
           id: ticket.id,
           subject: ticket.subject,
@@ -109,6 +120,14 @@ class TicketService {
           limit: parseInt(limit)
         }
       };
+
+      logger.info('Tickets retrieved successfully', {
+        count: tickets.count,
+        page,
+        limit
+      });
+
+      return result;
 
     } catch (error) {
       logger.error('Error listing tickets', {
@@ -204,5 +223,4 @@ class TicketService {
   }
 }
 
-// Export singleton instance
 module.exports = new TicketService();

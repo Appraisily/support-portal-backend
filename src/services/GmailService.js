@@ -55,7 +55,7 @@ class GmailService {
       });
 
       // Initialize models
-      const { models } = await getModels();
+      const models = await getModels();
       this.models = models;
 
       // Set up watch only in production
@@ -120,7 +120,33 @@ class GmailService {
     }
   }
 
-  async handleWebhook(webhookData) {
+  async getWatchStatus() {
+    try {
+      const response = await this.gmail.users.getProfile({
+        userId: 'me'
+      });
+
+      const watchInfo = await this.models.Setting.findOne({
+        where: { key: 'gmail_watch_info' },
+        order: [['createdAt', 'DESC']]
+      });
+
+      return {
+        active: !!watchInfo,
+        historyId: response.data.historyId,
+        lastProcessedHistoryId: watchInfo?.value ? JSON.parse(watchInfo.value).historyId : null,
+        expiration: watchInfo?.value ? JSON.parse(watchInfo.value).expiration : null
+      };
+    } catch (error) {
+      logger.error('Error getting watch status', {
+        error: error.message,
+        stack: error.stack
+      });
+      return { active: false };
+    }
+  }
+
+  async processWebhook(webhookData) {
     try {
       logger.info('Processing Gmail webhook', {
         hasData: !!webhookData?.message?.data
@@ -133,30 +159,16 @@ class GmailService {
         throw new Error('Invalid notification format');
       }
 
-      const result = await this.processNewEmails(notification);
-      
-      logger.info('Webhook processing completed', {
-        historyId: notification.historyId,
-        processed: result.processed,
-        tickets: result.tickets
-      });
-
-      return result;
-    } catch (error) {
-      logger.error('Error processing webhook', {
-        error: error.message,
-        stack: error.stack
-      });
-      throw error;
-    }
-  }
-
-  async processNewEmails(notification) {
-    try {
+      // Get history since last processed ID
       const history = await this.gmail.users.history.list({
         userId: 'me',
         startHistoryId: notification.historyId,
         historyTypes: ['messageAdded']
+      });
+
+      logger.info('Retrieved Gmail history', {
+        historyId: notification.historyId,
+        itemCount: history.data.history?.length || 0
       });
 
       if (!history.data.history?.length) {
@@ -169,20 +181,37 @@ class GmailService {
       for (const item of history.data.history) {
         if (item.messagesAdded) {
           for (const message of item.messagesAdded) {
+            logger.info('Processing new message', {
+              messageId: message.message.id
+            });
+
             const emailData = await this.getEmailData(message.message.id);
             const ticket = await this.createOrUpdateTicket(emailData);
             
             if (ticket) {
               tickets++;
+              logger.info('Ticket created/updated', {
+                ticketId: ticket.id,
+                threadId: emailData.threadId
+              });
             }
             processed++;
           }
         }
       }
 
+      // Update last processed history ID
+      await this.models.Setting.create({
+        key: 'gmail_watch_info',
+        value: JSON.stringify({
+          historyId: history.data.historyId,
+          expiration: Date.now() + (7 * 24 * 60 * 60 * 1000) // 7 days
+        })
+      });
+
       return { processed, tickets };
     } catch (error) {
-      logger.error('Error processing new emails', {
+      logger.error('Error processing webhook', {
         error: error.message,
         stack: error.stack
       });
@@ -213,6 +242,13 @@ class GmailService {
         }
       }
 
+      logger.info('Retrieved email data', {
+        messageId,
+        threadId,
+        subject,
+        from: from.replace(/@.*/, '@...') // Log email partially for privacy
+      });
+
       return {
         messageId,
         threadId,
@@ -231,6 +267,17 @@ class GmailService {
 
   async createOrUpdateTicket(emailData) {
     try {
+      // Extract email from From field
+      const emailMatch = emailData.from.match(/<(.+?)>/) || [null, emailData.from];
+      const email = emailMatch[1].toLowerCase();
+      const name = emailData.from.split('<')[0].trim() || email.split('@')[0];
+
+      logger.info('Processing email for ticket', {
+        threadId: emailData.threadId,
+        subject: emailData.subject,
+        from: email.replace(/@.*/, '@...') // Log email partially for privacy
+      });
+
       // Check for existing ticket with this thread ID
       const existingTicket = await this.models.Ticket.findOne({
         where: { gmailThreadId: emailData.threadId }
@@ -248,15 +295,20 @@ class GmailService {
           lastMessageAt: new Date()
         });
 
+        logger.info('Updated existing ticket', {
+          ticketId: existingTicket.id,
+          threadId: emailData.threadId
+        });
+
         return existingTicket;
       }
 
       // Create new customer if needed
       const [customer] = await this.models.Customer.findOrCreate({
-        where: { email: emailData.from },
+        where: { email },
         defaults: {
-          name: emailData.from.split('@')[0],
-          email: emailData.from
+          name,
+          email
         }
       });
 
@@ -277,6 +329,12 @@ class GmailService {
         content: emailData.content,
         direction: 'inbound',
         customerId: customer.id
+      });
+
+      logger.info('Created new ticket from email', {
+        ticketId: ticket.id,
+        threadId: emailData.threadId,
+        customerEmail: email.replace(/@.*/, '@...') // Log email partially for privacy
       });
 
       return ticket;

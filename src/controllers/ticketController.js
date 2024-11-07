@@ -1,10 +1,9 @@
 const ticketService = require('../services/TicketService');
 const logger = require('../utils/logger');
+const ApiError = require('../utils/apiError');
 
 exports.listTickets = async (req, res, next) => {
   try {
-    await ticketService.ensureInitialized();
-    
     const { status, priority, page, limit, sort, order } = req.query;
 
     logger.info('Listing tickets request:', {
@@ -21,10 +20,7 @@ exports.listTickets = async (req, res, next) => {
 
     res.json({
       success: true,
-      data: {
-        tickets: result.tickets,
-        pagination: result.pagination
-      }
+      ...result
     });
   } catch (error) {
     logger.error('Error listing tickets', {
@@ -44,7 +40,7 @@ exports.getTicket = async (req, res, next) => {
     });
 
     const ticket = await ticketService.getTicketById(req.params.id);
-    res.json({ ticket });
+    res.json({ success: true, ticket });
   } catch (error) {
     logger.error('Error getting ticket', {
       ticketId: req.params.id,
@@ -69,7 +65,7 @@ exports.createTicket = async (req, res, next) => {
       status: ticket.status
     });
 
-    res.status(201).json({ ticket });
+    res.status(201).json({ success: true, ticket });
   } catch (error) {
     logger.error('Error creating ticket', {
       error: error.message,
@@ -94,50 +90,11 @@ exports.updateTicket = async (req, res, next) => {
       newStatus: ticket.status
     });
 
-    res.json({ ticket });
+    res.json({ success: true, ticket });
   } catch (error) {
     logger.error('Error updating ticket', {
       ticketId: req.params.id,
       error: error.message
-    });
-    next(error);
-  }
-};
-
-exports.replyToTicket = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { content, attachments } = req.body;
-
-    logger.info('Adding reply to ticket', {
-      ticketId: id,
-      userId: req.user?.id,
-      hasAttachments: !!attachments
-    });
-
-    const ticket = await ticketService.getTicketById(id);
-    const message = await ticketService.addMessage(id, {
-      content,
-      attachments,
-      author: req.user.id
-    });
-
-    logger.info('Reply added successfully', {
-      ticketId: id,
-      messageId: message.id,
-      userId: req.user?.id
-    });
-
-    res.json({
-      success: true,
-      message
-    });
-  } catch (error) {
-    logger.error('Error adding reply to ticket', {
-      ticketId: req.params.id,
-      error: error.message,
-      stack: error.stack,
-      userId: req.user?.id
     });
     next(error);
   }
