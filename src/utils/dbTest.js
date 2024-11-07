@@ -1,63 +1,61 @@
 const { Client } = require('pg');
 const logger = require('./logger');
-const secretManager = require('./secretManager');
 
-async function testDatabaseConnection() {
-  try {
-    logger.info('Starting database connectivity test...');
+async function checkDatabaseConnection() {
+  const {
+    DB_NAME,
+    DB_USER,
+    DB_PASSWORD,
+    CLOUD_SQL_CONNECTION_NAME
+  } = process.env;
 
-    // Get database configuration from Secret Manager
-    await secretManager.ensureInitialized();
-    
-    const dbConfig = {
-      user: await secretManager.getSecret('DB_USER'),
-      password: await secretManager.getSecret('DB_PASSWORD'),
-      database: await secretManager.getSecret('DB_NAME'),
-      instanceName: await secretManager.getSecret('CLOUD_SQL_CONNECTION_NAME')
-    };
+  logger.info('Starting database connectivity test...');
 
-    // Configure client based on environment
-    const clientConfig = {
-      user: dbConfig.user,
-      password: dbConfig.password,
-      database: dbConfig.database
-    };
+  // 1. Check environment variables
+  logger.info('1. Checking environment variables...');
+  const envCheck = {
+    DB_NAME: !!DB_NAME,
+    DB_USER: !!DB_USER,
+    DB_PASSWORD: !!DB_PASSWORD,
+    CLOUD_SQL_CONNECTION_NAME: !!CLOUD_SQL_CONNECTION_NAME
+  };
+  logger.info('Environment variables present:', envCheck);
 
-    if (process.env.NODE_ENV === 'production') {
-      // Production: Use Unix Domain Socket
-      clientConfig.host = '/cloudsql';
-      clientConfig.dialectOptions = {
-        socketPath: `/cloudsql/${dbConfig.instanceName}`
-      };
-    } else {
-      // Development: Use TCP
-      clientConfig.host = 'localhost';
-      clientConfig.port = 5432;
+  // 2. Test PostgreSQL connection
+  logger.info('2. Testing PostgreSQL connection...');
+  const client = new Client({
+    host: `/cloudsql/${CLOUD_SQL_CONNECTION_NAME}`,
+    database: DB_NAME,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    ssl: false,
+    dialectOptions: {
+      socketPath: `/cloudsql/${CLOUD_SQL_CONNECTION_NAME}`
     }
+  });
 
-    logger.info('Testing database connection...', {
-      database: dbConfig.database,
-      instanceName: dbConfig.instanceName
-    });
-
-    const client = new Client(clientConfig);
+  try {
+    logger.info('Attempting to connect to database with connection name:', CLOUD_SQL_CONNECTION_NAME);
     await client.connect();
+    logger.info('Successfully connected to database');
 
+    // Test query
     const result = await client.query('SELECT version()');
-    logger.info('Database connection successful', {
-      version: result.rows[0].version
-    });
+    logger.info('Database version:', result.rows[0]);
 
     await client.end();
+    logger.info('Database connection test completed successfully');
     return true;
-
   } catch (error) {
-    logger.error('Database connection test failed', {
-      error: error.message,
-      stack: error.stack,
+    logger.error('Database connection test failed:', {
       code: error.code,
-      detail: error.detail
+      message: error.message,
+      detail: error.detail,
+      hint: error.hint,
+      connectionName: CLOUD_SQL_CONNECTION_NAME
     });
     return false;
   }
 }
+
+module.exports = { checkDatabaseConnection };

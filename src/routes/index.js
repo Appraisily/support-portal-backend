@@ -13,8 +13,8 @@ const routes = {
 };
 
 const missingRoutes = Object.entries(routes)
-  .filter(([_, route]) => !route)
-  .map(([name]) => name);
+  .filter(([, route]) => !route)
+  .map(([routeName]) => routeName);
 
 if (missingRoutes.length > 0) {
   logger.error('Missing route modules', {
@@ -67,12 +67,6 @@ router.use((err, req, res, next) => {
       ? 'Internal server error' 
       : err.message
   });
-});
-
-// Log de inicialización exitosa
-logger.info('Routes initialized successfully', {
-  timestamp: new Date().toISOString(),
-  environment: process.env.NODE_ENV
 });
 
 module.exports = router;

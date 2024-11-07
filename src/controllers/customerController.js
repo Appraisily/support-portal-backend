@@ -8,8 +8,8 @@ exports.getCustomer = async (req, res, next) => {
       customerId: req.params.customerId
     });
 
-    const models = await getModels();
-    const customer = await models.Customer.findByPk(req.params.customerId);
+    const { Customer } = await getModels();
+    const customer = await Customer.findByPk(req.params.customerId);
     
     if (!customer) {
       logger.warn('Customer not found', {
@@ -49,16 +49,17 @@ exports.getCustomerPurchases = async (req, res, next) => {
       customerId
     });
 
-    const models = await getModels();
+    const { Purchase } = await getModels();
+    const purchases = await Purchase.findAll({
+      where: { customerId }
+    });
     
     logger.info('Customer purchases retrieved', {
       customerId,
-      purchasesCount: 0  // Por ahora siempre es 0
+      purchasesCount: purchases.length
     });
 
-    res.json({
-      purchases: []
-    });
+    res.json({ purchases });
   } catch (error) {
     logger.error('Error getting customer purchases', {
       error: error.message,

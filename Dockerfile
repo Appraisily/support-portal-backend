@@ -25,4 +25,5 @@ USER node
 
 EXPOSE 8080
 
-CMD ["node", "src/index.js"]
+# Run migrations and start the application
+CMD ["sh", "-c", "npm run migrate && node src/index.js"]

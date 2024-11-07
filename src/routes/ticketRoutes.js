@@ -2,14 +2,20 @@ const express = require('express');
 const router = express.Router();
 const ticketController = require('../controllers/ticketController');
 const { validateAuth } = require('../middleware/auth');
+const { 
+  validateTicketCreate, 
+  validateTicketUpdate,
+  validateTicketReply 
+} = require('../validators/ticketValidator');
 
-// Apply authentication to all routes
+// Aplicar autenticación a todas las rutas
 router.use(validateAuth);
 
-// Ticket routes
+// Rutas de tickets
 router.get('/', ticketController.listTickets);
 router.get('/:id', ticketController.getTicket);
-router.post('/', ticketController.createTicket);
-router.patch('/:id', ticketController.updateTicket);
+router.post('/', validateTicketCreate, ticketController.createTicket);
+router.patch('/:id', validateTicketUpdate, ticketController.updateTicket);
+router.post('/:id/reply', validateTicketReply, ticketController.replyToTicket);
 
 module.exports = router;

@@ -7,6 +7,15 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/support-portal-backend']
   
+  # Run database migrations
+  - name: 'gcr.io/$PROJECT_ID/support-portal-backend'
+    entrypoint: npm
+    args: ['run', 'migrate']
+    env:
+      - 'NODE_ENV=production'
+      - 'DB_HOST=/cloudsql/${_CLOUD_SQL_CONNECTION_NAME}'
+      - 'DB_PORT=5432'
+  
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
