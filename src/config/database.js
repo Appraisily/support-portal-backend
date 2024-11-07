@@ -10,7 +10,12 @@ const initializeDatabase = async () => {
 
   const config = {
     dialect: 'postgres',
-    logging: (msg) => logger.debug(msg),
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    username: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    logging: (msg) => logger.debug('Sequelize:', { query: msg }),
     pool: {
       max: 5,
       min: 0,
@@ -19,55 +24,28 @@ const initializeDatabase = async () => {
     }
   };
 
-  // Cloud Run with Cloud SQL configuration
-  if (process.env.NODE_ENV === 'production') {
-    Object.assign(config, {
-      host: process.env.CLOUD_SQL_CONNECTION_NAME 
-        ? `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`
-        : process.env.DB_HOST,
-      database: process.env.DB_NAME,
-      username: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      dialectOptions: {
-        socketPath: process.env.CLOUD_SQL_CONNECTION_NAME 
-          ? `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`
-          : undefined
-      }
-    });
-  } else {
-    // Local development configuration
-    Object.assign(config, {
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT, 10) || 5432,
-      database: process.env.DB_NAME || 'support_portal',
-      username: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || 'postgres'
-    });
+  // In development, don't verify SSL cert
+  if (process.env.NODE_ENV === 'development') {
+    config.dialectOptions = {
+      ssl: false
+    };
   }
 
   try {
-    logger.info('Initializing database connection', {
-      environment: process.env.NODE_ENV,
-      host: config.host,
-      database: config.database,
-      socketPath: config.dialectOptions?.socketPath
-    });
-
     sequelize = new Sequelize(config);
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
     return sequelize;
   } catch (error) {
-    logger.error('Unable to connect to the database:', {
+    logger.error('Unable to connect to database:', {
       error: error.message,
-      stack: error.stack,
-      config: {
-        ...config,
-        password: '[REDACTED]'
-      }
+      stack: error.stack
     });
     throw error;
   }
 };
 
-module.exports = { initializeDatabase };
+module.exports = {
+  initializeDatabase,
+  getSequelize: () => sequelize
+};

@@ -28,10 +28,7 @@ module.exports = {
       socketPath: process.env.CLOUD_SQL_CONNECTION_NAME 
         ? `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`
         : undefined,
-      ssl: {
-        require: true,
-        rejectUnauthorized: false
-      }
+      ssl: false // Disable SSL when using Unix Domain Socket
     },
     logging: false
   }

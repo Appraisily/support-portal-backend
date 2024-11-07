@@ -13,10 +13,8 @@
     "seed": "sequelize-cli db:seed:all",
     "seed:undo": "sequelize-cli db:seed:undo:all",
     "lint": "eslint src/",
-    "build": "docker build -t support-portal-backend .",
-    "docker:dev": "docker-compose up",
-    "docker:build": "docker build --target production -t support-portal-backend .",
-    "docker:test": "docker-compose -f docker-compose.test.yml up --abort-on-container-exit"
+    "test:api": "jest --config jest.config.js --testPathPattern=src/__tests__/api/.*\\.test\\.js",
+    "dev:setup": "npm install && npm run migrate && npm run seed"
   },
   "dependencies": {
     "@google-cloud/secret-manager": "^5.0.0",
@@ -31,12 +29,12 @@
     "pg": "^8.11.3",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.35.0",
-    "sequelize-cli": "^6.6.1",
     "winston": "^3.11.0",
     "express-validator": "^7.0.1",
     "dotenv": "^16.3.1",
     "googleapis": "^128.0.0",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "sequelize-cli": "^6.6.1"
   },
   "devDependencies": {
     "jest": "^29.7.0",
