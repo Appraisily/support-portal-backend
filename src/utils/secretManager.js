@@ -1,6 +1,25 @@
 const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 const logger = require('./logger');
 
+/*
+IMPORTANTE: Secret Manager es el primer servicio que debe inicializarse
+
+Razones:
+1. Otros servicios dependen de estos secretos
+2. Sin secretos, la aplicación no puede:
+   - Conectar a la base de datos
+   - Autenticar con Gmail
+   - Validar tokens JWT
+   - Verificar credenciales de admin
+
+Orden de carga de secretos:
+1. Secretos de base de datos (DB_*)
+2. Secretos de autenticación (jwt-secret, ADMIN_*)
+3. Secretos de servicios externos (GMAIL_*)
+
+Si hay un error aquí, toda la aplicación debe fallar rápido y claramente.
+*/
+
 class SecretManager {
   constructor() {
     this.client = new SecretManagerServiceClient();

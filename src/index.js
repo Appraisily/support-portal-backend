@@ -1,81 +1,84 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const logger = require('./utils/logger');
-const { initializeDatabase } = require('./config/database');
 const routes = require('./routes');
-const GmailService = require('./services/GmailService');
+const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
-const appState = require('./utils/singleton');
+const { initializeDatabase } = require('./config/database');
+
+/*
+IMPORTANTE: ¡ORDEN DE INICIALIZACIÓN CRÍTICO!
+
+El orden correcto de inicialización debe ser:
+
+1. Secret Manager
+   - Necesario para obtener todas las credenciales
+   - Otros servicios dependen de estos secretos
+   - Sin esto, nada más puede funcionar correctamente
+
+2. Base de datos (Sequelize)
+   - Requiere secretos de DB_* del Secret Manager
+   - Necesario antes de que cualquier ruta que use modelos esté activa
+
+3. Servicios externos (Gmail, etc)
+   - Requieren credenciales del Secret Manager
+   - Dependen de la base de datos para almacenar estado
+
+4. Express y middlewares
+   - Algunos middlewares pueden requerir DB o servicios
+   - La autenticación necesita secretos JWT
+
+5. Rutas
+   - Dependen de todos los servicios anteriores
+   - No pueden funcionar sin DB y autenticación
+
+Si este orden no se respeta, obtendremos errores como:
+- "url must be string" (DB intentando inicializar sin secretos)
+- "jwt secret not found" (auth middleware sin Secret Manager)
+- "models is not defined" (rutas intentando usar DB no inicializada)
+*/
 
 async function startServer() {
   const startTime = Date.now();
+  
   try {
-    logger.info('Starting server initialization', {
-      environment: process.env.NODE_ENV,
-      nodeVersion: process.version
-    });
+    // 1. Secret Manager primero
+    await secretManager.ensureInitialized();
+    logger.info('Secrets loaded successfully');
 
-    // 1. Cargar secretos primero
-    if (process.env.NODE_ENV === 'production') {
-      logger.info('Loading secrets from Secret Manager');
-      await secretManager.loadSecrets();
-      logger.info('Secrets loaded successfully');
-    }
+    // 2. Base de datos después
+    await initializeDatabase();
+    logger.info('Database initialized successfully');
 
-    // 2. Inicializar la aplicación
-    logger.info('Initializing application state');
-    await appState.initialize();
-    logger.info('Application state initialized');
-
-    // 3. Configurar Express
+    // 3. Express y middlewares
     const app = express();
-    
-    // Configurar middleware de seguridad
-    app.use(helmet());
+    app.set('trust proxy', true);
     app.use(cors());
+    app.use(express.json());
     
-    // Configurar rate limiting
-    const limiter = rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutos
-      max: 100 // límite por IP
-    });
-    app.use(limiter);
-    
-    app.use(express.json({ limit: '10mb' }));
-    
-    logger.info('Express middleware configured');
-
-    // 4. Configurar Gmail
-    if (process.env.NODE_ENV === 'production') {
-      try {
-        logger.info('Initializing Gmail service');
-        await GmailService.setupGmail();
-        await GmailService.setupGmailWatch();
-        logger.info('Gmail service initialized successfully');
-      } catch (error) {
-        logger.error('Gmail service initialization failed', {
-          error: error.message,
-          stack: error.stack
-        });
-        // No detenemos el servidor por este error
-      }
-    }
-
-    // 5. Configurar rutas
+    // 4. Rutas al final
     app.use('/api', routes);
-    logger.info('API routes configured');
+    
+    // Error handler
+    app.use((err, req, res, next) => {
+      logger.error('Unhandled error', {
+        error: err.message,
+        stack: err.stack,
+        path: req.path
+      });
+      
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
+      });
+    });
 
-    // 6. Iniciar servidor
-    const PORT = process.env.PORT || 8080;
-    app.listen(PORT, '0.0.0.0', () => {
-      const startupTime = Date.now() - startTime;
-      logger.info('Server started successfully', {
-        port: PORT,
-        environment: process.env.NODE_ENV,
-        startupTimeMs: startupTime
+    // 5. Iniciar servidor
+    const port = process.env.PORT || 8080;
+    app.listen(port, () => {
+      logger.info(`Server started successfully`, {
+        port,
+        startupTimeMs: Date.now() - startTime
       });
     });
 
@@ -91,28 +94,19 @@ async function startServer() {
 
 // Manejar errores no capturados
 process.on('unhandledRejection', (error) => {
-  logger.error('Unhandled Promise Rejection', {
-    error: error.message,
-    stack: error.stack
-  });
-  // Dar tiempo para que los logs se escriban
-  setTimeout(() => process.exit(1), 1000);
-});
-
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception', {
-    error: error.message,
-    stack: error.stack
-  });
-  // Dar tiempo para que los logs se escriban
-  setTimeout(() => process.exit(1), 1000);
-});
-
-// Iniciar servidor
-startServer().catch(error => {
-  logger.error('Fatal error during server startup', {
+  logger.error('Unhandled rejection', {
     error: error.message,
     stack: error.stack
   });
   process.exit(1);
 });
+
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception', {
+    error: error.message,
+    stack: error.stack
+  });
+  process.exit(1);
+});
+
+startServer();
