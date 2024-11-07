@@ -5,6 +5,8 @@ const routes = require('./routes');
 const logger = require('./utils/logger');
 const secretManager = require('./utils/secretManager');
 const { initializeDatabase } = require('./config/database');
+const GmailService = require('./services/GmailService');
+const { errorHandler } = require('./middleware/errorHandler');
 
 async function startServer() {
   const startTime = Date.now();
@@ -23,34 +25,28 @@ async function startServer() {
     await initializeDatabase();
     logger.info('Database initialized successfully');
 
-    // 3. Express setup
+    // 3. Initialize Gmail Service
+    await GmailService.ensureInitialized();
+    logger.info('Gmail service initialized successfully');
+
+    // 4. Express setup
     const app = express();
     app.set('trust proxy', true);
     app.use(cors());
     app.use(express.json());
     
-    // 4. Routes
+    // 5. Routes
     app.use('/api', routes);
 
     // Error handler
-    app.use((err, req, res, next) => {
-      logger.error('Unhandled error', {
-        error: err.message,
-        stack: err.stack,
-        path: req.path
-      });
-      
-      res.status(500).json({
-        success: false,
-        message: 'Internal server error'
-      });
-    });
+    app.use(errorHandler);
 
     // Start server
     const port = process.env.PORT || 8080;
     app.listen(port, () => {
       logger.info('Server started successfully', {
         port,
+        environment: process.env.NODE_ENV,
         startupTimeMs: Date.now() - startTime
       });
     });

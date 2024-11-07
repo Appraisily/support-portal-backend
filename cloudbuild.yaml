@@ -60,17 +60,6 @@ options:
 substitutions:
   _CLOUD_SQL_CONNECTION_NAME: 'civil-forge-403609:us-central1:support-portal-db'
 
-# Trigger configuration
-triggers:
-  - github:
-      owner: "Appraisily"
-      name: "support-portal-backend"
-      push:
-        branch: "^main$"
-    pubsub:
-      topic: "cloud-builds"
-    webhook: true
-
 # Files that trigger builds
 includedFiles:
   - 'src/**'

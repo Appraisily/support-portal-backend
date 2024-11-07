@@ -1,6 +1,3 @@
-const { DataTypes } = require('sequelize');
-const bcryptjs = require('bcryptjs');
-
 module.exports = (sequelize, DataTypes) => {
   const User = sequelize.define('User', {
     id: {
@@ -18,12 +15,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     password: {
       type: DataTypes.STRING,
-      allowNull: false,
-      set(value) {
-        const salt = bcryptjs.genSaltSync(10);
-        const hash = bcryptjs.hashSync(value, salt);
-        this.setDataValue('password', hash);
-      }
+      allowNull: false
     },
     name: {
       type: DataTypes.STRING,
@@ -55,10 +47,6 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'userId',
       as: 'messages'
     });
-  };
-
-  User.prototype.comparePassword = async function(candidatePassword) {
-    return bcryptjs.compare(candidatePassword, this.password);
   };
 
   return User;

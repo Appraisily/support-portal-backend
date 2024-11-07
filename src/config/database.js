@@ -1,13 +1,15 @@
-const { Sequelize } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const logger = require('../utils/logger');
 const secretManager = require('../utils/secretManager');
+const path = require('path');
+const fs = require('fs');
 
 let sequelize = null;
 let models = null;
 
 const initializeDatabase = async () => {
   if (sequelize) {
-    return sequelize;
+    return { sequelize, models };
   }
 
   try {
@@ -23,8 +25,7 @@ const initializeDatabase = async () => {
 
     logger.info('Initializing database connection', {
       database: dbConfig.database,
-      instanceName: dbConfig.instanceName,
-      environment: process.env.NODE_ENV
+      instanceName: dbConfig.instanceName
     });
 
     const config = {
@@ -41,81 +42,58 @@ const initializeDatabase = async () => {
       logging: (msg) => logger.debug('Sequelize:', { query: msg })
     };
 
-    // Configure connection based on environment
     if (process.env.NODE_ENV === 'production') {
-      // Production: Use Unix Domain Socket
-      config.host = `/cloudsql/${dbConfig.instanceName}`;
+      config.host = '/cloudsql';
       config.dialectOptions = {
         socketPath: `/cloudsql/${dbConfig.instanceName}`
       };
     } else {
-      // Development: Use TCP with SSL
       config.host = 'localhost';
       config.port = 5432;
-      config.dialectOptions = {
-        ssl: {
-          require: true,
-          rejectUnauthorized: false
-        }
-      };
     }
 
     sequelize = new Sequelize(config);
 
-    // Test connection
-    await sequelize.authenticate();
-    logger.info('Database connection established successfully');
+    // Initialize models
+    models = {};
+    const modelsPath = path.join(__dirname, '..', 'models');
+    
+    // Read model files and initialize them
+    const modelFiles = fs.readdirSync(modelsPath)
+      .filter(file => file.endsWith('.js') && file !== 'index.js');
 
-    return sequelize;
-  } catch (error) {
-    logger.error('Database initialization failed', {
-      error: error.message,
-      stack: error.stack,
-      errorCode: error.original?.code,
-      errorDetail: error.original?.detail
-    });
-    throw error;
-  }
-};
+    for (const file of modelFiles) {
+      const model = require(path.join(modelsPath, file))(sequelize, DataTypes);
+      models[model.name] = model;
+    }
 
-const getModels = async () => {
-  if (!sequelize) {
-    await initializeDatabase();
-  }
-  
-  if (models) {
-    return models;
-  }
-
-  try {
-    // Import models
-    models = {
-      Setting: require('../models/setting')(sequelize),
-      User: require('../models/user')(sequelize),
-      Ticket: require('../models/ticket')(sequelize),
-      Message: require('../models/message')(sequelize),
-      Customer: require('../models/customer')(sequelize),
-      Attachment: require('../models/attachment')(sequelize),
-      PredefinedReply: require('../models/predefinedReply')(sequelize),
-      Purchase: require('../models/purchase')(sequelize),
-      PurchaseItem: require('../models/purchaseItem')(sequelize)
-    };
-
-    // Initialize associations
+    // Set up associations
     Object.values(models).forEach(model => {
       if (model.associate) {
         model.associate(models);
       }
     });
 
-    return models;
+    // Test connection
+    await sequelize.authenticate();
+    logger.info('Database connection established successfully');
+
+    return { sequelize, models };
   } catch (error) {
-    logger.error('Failed to initialize models', {
+    logger.error('Database initialization failed', {
       error: error.message,
       stack: error.stack
     });
     throw error;
   }
+};
+
+const getModels = async () => {
+  if (!models) {
+    const result = await initializeDatabase();
+    models = result.models;
+  }
+  return models;
 };
 
 module.exports = {
