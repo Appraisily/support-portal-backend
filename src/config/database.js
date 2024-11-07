@@ -1,109 +1,59 @@
-const { Sequelize, DataTypes } = require('sequelize');
+const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
-const secretManager = require('../utils/secretManager');
-const path = require('path');
-const fs = require('fs');
 
 let sequelize = null;
-let models = null;
 
 const initializeDatabase = async () => {
   if (sequelize) {
-    return { sequelize, models };
+    return sequelize;
   }
 
-  try {
-    await secretManager.ensureInitialized();
-    
-    // Get database configuration
-    const dbConfig = {
-      user: await secretManager.getSecret('DB_USER'),
-      password: await secretManager.getSecret('DB_PASSWORD'),
-      database: await secretManager.getSecret('DB_NAME'),
-      instanceName: await secretManager.getSecret('CLOUD_SQL_CONNECTION_NAME')
-    };
+  const config = {
+    dialect: 'postgres',
+    logging: (msg) => logger.debug(msg),
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000
+    }
+  };
 
-    logger.info('Initializing database connection', {
-      database: dbConfig.database,
-      instanceName: dbConfig.instanceName
-    });
-
-    const config = {
-      dialect: 'postgres',
-      username: dbConfig.user,
-      password: dbConfig.password,
-      database: dbConfig.database,
-      pool: {
-        max: 5,
-        min: 0,
-        acquire: 30000,
-        idle: 10000
-      },
-      logging: (msg) => logger.debug('Sequelize:', { query: msg })
-    };
-
-    if (process.env.NODE_ENV === 'production') {
-      // In production, use Unix Domain Socket
-      config.host = `/cloudsql/${dbConfig.instanceName}`;
-    } else {
-      // In development, use TCP
-      config.host = 'localhost';
-      config.port = 5432;
-      config.dialectOptions = {
+  // Cloud Run configuration
+  if (process.env.NODE_ENV === 'production') {
+    Object.assign(config, {
+      host: process.env.DB_HOST,
+      database: process.env.DB_NAME,
+      username: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      dialectOptions: {
+        socketPath: `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
         ssl: {
           require: true,
           rejectUnauthorized: false
         }
-      };
-    }
-
-    sequelize = new Sequelize(config);
-
-    // Initialize models
-    models = {};
-    const modelsPath = path.join(__dirname, '..', 'models');
-    
-    // Read model files and initialize them
-    const modelFiles = fs.readdirSync(modelsPath)
-      .filter(file => file.endsWith('.js') && file !== 'index.js');
-
-    for (const file of modelFiles) {
-      const model = require(path.join(modelsPath, file))(sequelize, DataTypes);
-      models[model.name] = model;
-    }
-
-    // Set up associations
-    Object.values(models).forEach(model => {
-      if (model.associate) {
-        model.associate(models);
       }
     });
+  } else {
+    // Local development configuration
+    Object.assign(config, {
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT, 10) || 5432,
+      database: process.env.DB_NAME || 'support_portal',
+      username: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres'
+    });
+  }
 
-    // Test connection
+  try {
+    sequelize = new Sequelize(config);
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
-
-    return { sequelize, models };
+    return sequelize;
   } catch (error) {
-    logger.error('Database initialization failed', {
-      error: error.message,
-      stack: error.stack,
-      code: error.code,
-      detail: error.detail
-    });
+    logger.error('Unable to connect to the database:', error);
     throw error;
   }
 };
 
-const getModels = async () => {
-  if (!models) {
-    const result = await initializeDatabase();
-    models = result.models;
-  }
-  return models;
-};
-
-module.exports = {
-  initializeDatabase,
-  getModels
-};
+module.exports = { initializeDatabase };

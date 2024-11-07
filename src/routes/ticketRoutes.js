@@ -8,10 +8,10 @@ const {
   validateTicketReply 
 } = require('../validators/ticketValidator');
 
-// Aplicar autenticación a todas las rutas
+// Apply authentication to all routes
 router.use(validateAuth);
 
-// Rutas de tickets
+// Ticket routes with proper controller methods
 router.get('/', ticketController.listTickets);
 router.get('/:id', ticketController.getTicket);
 router.post('/', validateTicketCreate, ticketController.createTicket);

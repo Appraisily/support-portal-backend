@@ -35,3 +35,42 @@ exports.listTickets = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.getTicket = async (req, res, next) => {
+  try {
+    const ticket = await ticketService.getTicketById(req.params.id);
+    res.json({ success: true, data: ticket });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createTicket = async (req, res, next) => {
+  try {
+    const ticket = await ticketService.createTicket(req.body);
+    res.status(201).json({ success: true, data: ticket });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateTicket = async (req, res, next) => {
+  try {
+    const ticket = await ticketService.updateTicket(req.params.id, req.body);
+    res.json({ success: true, data: ticket });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.replyToTicket = async (req, res, next) => {
+  try {
+    const reply = await ticketService.addReply(req.params.id, {
+      content: req.body.content,
+      userId: req.user.id
+    });
+    res.status(201).json({ success: true, data: reply });
+  } catch (error) {
+    next(error);
+  }
+};
