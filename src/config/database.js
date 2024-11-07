@@ -43,13 +43,18 @@ const initializeDatabase = async () => {
     };
 
     if (process.env.NODE_ENV === 'production') {
-      config.host = '/cloudsql';
-      config.dialectOptions = {
-        socketPath: `/cloudsql/${dbConfig.instanceName}`
-      };
+      // In production, use Unix Domain Socket
+      config.host = `/cloudsql/${dbConfig.instanceName}`;
     } else {
+      // In development, use TCP
       config.host = 'localhost';
       config.port = 5432;
+      config.dialectOptions = {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      };
     }
 
     sequelize = new Sequelize(config);
@@ -82,7 +87,9 @@ const initializeDatabase = async () => {
   } catch (error) {
     logger.error('Database initialization failed', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
+      code: error.code,
+      detail: error.detail
     });
     throw error;
   }
