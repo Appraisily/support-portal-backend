@@ -18,7 +18,10 @@ RUN npm prune --production
 ENV NODE_ENV=production
 
 # Create directory for Cloud SQL
-RUN mkdir -p /cloudsql
+RUN mkdir -p /cloudsql && chown -R node:node /cloudsql && chmod 777 /cloudsql
+
+# Use non-root user
+USER node
 
 EXPOSE 8080
 

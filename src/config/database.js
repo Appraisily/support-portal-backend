@@ -12,8 +12,7 @@ const initializeDatabase = async () => {
 
   try {
     await secretManager.ensureInitialized();
-    logger.info('Initializing database connection...');
-
+    
     // Get database configuration
     const dbConfig = {
       user: await secretManager.getSecret('DB_USER'),
@@ -22,19 +21,17 @@ const initializeDatabase = async () => {
       instanceName: await secretManager.getSecret('CLOUD_SQL_CONNECTION_NAME')
     };
 
-    // Validate configuration
-    Object.entries(dbConfig).forEach(([key, value]) => {
-      if (!value) {
-        throw new Error(`Missing database config: ${key}`);
-      }
+    logger.info('Initializing database connection', {
+      database: dbConfig.database,
+      instanceName: dbConfig.instanceName,
+      environment: process.env.NODE_ENV
     });
 
-    // Configure Sequelize
     const config = {
       dialect: 'postgres',
-      database: dbConfig.database,
       username: dbConfig.user,
       password: dbConfig.password,
+      database: dbConfig.database,
       pool: {
         max: 5,
         min: 0,
@@ -44,19 +41,22 @@ const initializeDatabase = async () => {
       logging: (msg) => logger.debug('Sequelize:', { query: msg })
     };
 
-    // In production, use Unix Domain Socket without SSL
+    // Configure connection based on environment
     if (process.env.NODE_ENV === 'production') {
+      // Production: Use Unix Domain Socket
       config.host = `/cloudsql/${dbConfig.instanceName}`;
       config.dialectOptions = {
-        socketPath: `/cloudsql/${dbConfig.instanceName}`,
-        ssl: false // Explicitly disable SSL for Unix socket
+        socketPath: `/cloudsql/${dbConfig.instanceName}`
       };
     } else {
-      // In development, use TCP with SSL disabled (since it's disabled in the DB)
-      config.host = await secretManager.getSecret('DB_HOST');
-      config.port = await secretManager.getSecret('DB_PORT');
+      // Development: Use TCP with SSL
+      config.host = 'localhost';
+      config.port = 5432;
       config.dialectOptions = {
-        ssl: false // Disable SSL since it's not enabled in the database
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
       };
     }
 
@@ -64,11 +64,7 @@ const initializeDatabase = async () => {
 
     // Test connection
     await sequelize.authenticate();
-    logger.info('Database connection established successfully', {
-      database: dbConfig.database,
-      user: dbConfig.user,
-      instanceName: dbConfig.instanceName
-    });
+    logger.info('Database connection established successfully');
 
     return sequelize;
   } catch (error) {
@@ -83,34 +79,26 @@ const initializeDatabase = async () => {
 };
 
 const getModels = async () => {
+  if (!sequelize) {
+    await initializeDatabase();
+  }
+  
   if (models) {
     return models;
   }
 
   try {
-    const sequelize = await initializeDatabase();
-    
     // Import models
-    const Setting = require('../models/setting')(sequelize);
-    const User = require('../models/user')(sequelize);
-    const Ticket = require('../models/ticket')(sequelize);
-    const Message = require('../models/message')(sequelize);
-    const Customer = require('../models/customer')(sequelize);
-    const Attachment = require('../models/attachment')(sequelize);
-    const PredefinedReply = require('../models/predefinedReply')(sequelize);
-    const Purchase = require('../models/purchase')(sequelize);
-    const PurchaseItem = require('../models/purchaseItem')(sequelize);
-
     models = {
-      Setting,
-      User,
-      Ticket,
-      Message,
-      Customer,
-      Attachment,
-      PredefinedReply,
-      Purchase,
-      PurchaseItem
+      Setting: require('../models/setting')(sequelize),
+      User: require('../models/user')(sequelize),
+      Ticket: require('../models/ticket')(sequelize),
+      Message: require('../models/message')(sequelize),
+      Customer: require('../models/customer')(sequelize),
+      Attachment: require('../models/attachment')(sequelize),
+      PredefinedReply: require('../models/predefinedReply')(sequelize),
+      Purchase: require('../models/purchase')(sequelize),
+      PurchaseItem: require('../models/purchaseItem')(sequelize)
     };
 
     // Initialize associations
@@ -120,7 +108,6 @@ const getModels = async () => {
       }
     });
 
-    logger.info('Models initialized successfully');
     return models;
   } catch (error) {
     logger.error('Failed to initialize models', {

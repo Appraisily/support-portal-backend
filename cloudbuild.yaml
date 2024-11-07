@@ -37,11 +37,11 @@ steps:
       - 'NODE_ENV=production,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID'
       - '--set-secrets'
       - >-
+        DB_HOST=DB_HOST:latest,
+        DB_PORT=DB_PORT:latest,
         DB_NAME=DB_NAME:latest,
         DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
-        DB_HOST=DB_HOST:latest,
-        DB_PORT=DB_PORT:latest,
         CLOUD_SQL_CONNECTION_NAME=CLOUD_SQL_CONNECTION_NAME:latest,
         GMAIL_CLIENT_ID=GMAIL_CLIENT_ID:latest,
         GMAIL_CLIENT_SECRET=GMAIL_CLIENT_SECRET:latest,
@@ -55,6 +55,26 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  dynamic_substitutions: true
 
 substitutions:
   _CLOUD_SQL_CONNECTION_NAME: 'civil-forge-403609:us-central1:support-portal-db'
+
+# Trigger configuration
+triggers:
+  - github:
+      owner: "Appraisily"
+      name: "support-portal-backend"
+      push:
+        branch: "^main$"
+    pubsub:
+      topic: "cloud-builds"
+    webhook: true
+
+# Files that trigger builds
+includedFiles:
+  - 'src/**'
+  - 'package*.json'
+  - 'Dockerfile'
+  - 'cloudbuild.yaml'
+  - '.dockerignore'
