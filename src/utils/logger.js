@@ -1,57 +1,91 @@
 const winston = require('winston');
 
-// Formato personalizado para los logs
+// Custom format that properly handles objects and errors
 const customFormat = winston.format.printf(({ level, message, timestamp, ...metadata }) => {
-  // Simplificar el manejo de metadatos
   let meta = '';
+  
+  // Handle metadata/additional context
   if (Object.keys(metadata).length > 0) {
-    // Filtrar el campo 'data' si existe y usar directamente el contenido
-    const cleanMeta = metadata.data ? JSON.parse(metadata.data) : metadata;
-    meta = `\n${JSON.stringify(cleanMeta, null, 2)}`;
+    // Remove empty objects and undefined values
+    const cleanMeta = Object.entries(metadata).reduce((acc, [key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+
+    // Only add metadata if there's actual content
+    if (Object.keys(cleanMeta).length > 0) {
+      meta = `\n${JSON.stringify(cleanMeta, null, 2)}`;
+    }
   }
 
-  return `${timestamp} ${level}: ${message}${meta}`;
+  return `${timestamp} [${level}]: ${message}${meta}`;
 });
 
+// Create the logger instance
 const logger = winston.createLogger({
-  level: 'info',
+  level: process.env.LOG_LEVEL || 'info',
   format: winston.format.combine(
-    winston.format.timestamp(),
+    winston.format.timestamp({
+      format: 'YYYY-MM-DD HH:mm:ss'
+    }),
     winston.format.errors({ stack: true }),
+    winston.format.splat(),
     customFormat
   ),
   transports: [
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.timestamp(),
+        winston.format.timestamp({
+          format: 'YYYY-MM-DD HH:mm:ss'
+        }),
         customFormat
       )
     })
   ]
 });
 
-// Métodos simplificados
+// Helper methods with improved formatting
+const formatError = (error) => {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack,
+      ...(error.code && { code: error.code }),
+      ...(error.statusCode && { statusCode: error.statusCode })
+    };
+  }
+  return error;
+};
+
 logger.debug = (message, meta = {}) => {
+  if (meta instanceof Error) {
+    meta = formatError(meta);
+  }
   logger.log('debug', message, meta);
 };
 
 logger.info = (message, meta = {}) => {
-  // Evitar doble stringify
-  const cleanMeta = typeof meta === 'string' ? JSON.parse(meta) : meta;
-  logger.log('info', message, cleanMeta);
+  if (meta instanceof Error) {
+    meta = formatError(meta);
+  }
+  logger.log('info', message, meta);
+};
+
+logger.warn = (message, meta = {}) => {
+  if (meta instanceof Error) {
+    meta = formatError(meta);
+  }
+  logger.log('warn', message, meta);
 };
 
 logger.error = (message, meta = {}) => {
-  // Para errores, incluir stack trace si está disponible
-  const errorMeta = meta instanceof Error ? 
-    { 
-      message: meta.message,
-      stack: meta.stack,
-      ...meta
-    } : meta;
-  
-  logger.log('error', message, errorMeta);
+  if (meta instanceof Error) {
+    meta = formatError(meta);
+  }
+  logger.log('error', message, meta);
 };
 
 module.exports = logger;
