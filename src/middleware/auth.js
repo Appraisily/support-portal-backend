@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
+const secretManager = require('../utils/secretManager');
 
 exports.validateAuth = async (req, res, next) => {
   try {
@@ -12,7 +13,12 @@ exports.validateAuth = async (req, res, next) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const jwtSecret = await secretManager.getSecret('jwt-secret');
+    if (!jwtSecret) {
+      throw new Error('JWT secret not configured');
+    }
+
+    const decoded = jwt.verify(token, jwtSecret);
     req.user = decoded;
 
     logger.info('Token validated', {

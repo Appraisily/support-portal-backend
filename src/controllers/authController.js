@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
-const { getModels } = require('../config/database');
 const bcryptjs = require('bcryptjs');
+const secretManager = require('../utils/secretManager');
 
 exports.login = async (req, res, next) => {
   try {
@@ -19,13 +19,12 @@ exports.login = async (req, res, next) => {
       hasCredentials: true
     });
 
-    const models = await getModels();
-    const user = await models.User.findOne({ 
-      where: { email },
-      attributes: ['id', 'email', 'password', 'role', 'name']
-    });
+    // Obtener credenciales de admin desde Secret Manager
+    const adminEmail = await secretManager.getSecret('ADMIN_EMAIL');
+    const adminPassword = await secretManager.getSecret('ADMIN_PASSWORD');
 
-    if (!user || !(await bcryptjs.compare(password, user.password))) {
+    // Verificar si las credenciales coinciden con el admin
+    if (email !== adminEmail || password !== adminPassword) {
       logger.warn('Login failed: invalid credentials', { email });
       return res.status(401).json({
         success: false,
@@ -33,30 +32,36 @@ exports.login = async (req, res, next) => {
       });
     }
 
+    // Verificar JWT_SECRET
+    const jwtSecret = await secretManager.getSecret('jwt-secret');
+    if (!jwtSecret) {
+      logger.error('JWT secret not found');
+      throw new Error('JWT configuration missing');
+    }
+
     const token = jwt.sign(
       { 
-        id: user.id, 
-        email: user.email, 
-        role: user.role 
+        id: 'admin',
+        email: adminEmail,
+        role: 'admin'
       },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '24h' }
     );
 
     logger.info('Login successful', {
-      email: user.email,
-      role: user.role,
-      userId: user.id
+      email: adminEmail,
+      role: 'admin'
     });
 
     res.json({
       success: true,
       data: {
         user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role
+          id: 'admin',
+          email: adminEmail,
+          name: 'Administrator',
+          role: 'admin'
         },
         token
       }
