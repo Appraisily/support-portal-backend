@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
 const { getModels } = require('../config/database');
+const ApiError = require('../utils/apiError');
 
 class GmailService {
   constructor() {
@@ -44,7 +45,7 @@ class GmailService {
     try {
       logger.info('Initializing Gmail service...');
       
-      // Initialize OAuth2 client
+      // Initialize OAuth2 client with required scopes
       this.oauth2Client = new google.auth.OAuth2(
         process.env.GMAIL_CLIENT_ID,
         process.env.GMAIL_CLIENT_SECRET,
@@ -52,7 +53,12 @@ class GmailService {
       );
 
       this.oauth2Client.setCredentials({
-        refresh_token: process.env.GMAIL_REFRESH_TOKEN
+        refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+        scope: [
+          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/gmail.modify',
+          'https://www.googleapis.com/auth/gmail.metadata'
+        ].join(' ')
       });
 
       // Initialize Gmail API
@@ -70,7 +76,7 @@ class GmailService {
       logger.info('Gmail service initialized successfully');
     } catch (error) {
       logger.error('Failed to initialize Gmail service:', error);
-      throw error;
+      throw new ApiError(503, 'Gmail service initialization failed');
     }
   }
 
@@ -110,42 +116,56 @@ class GmailService {
       return response.data;
     } catch (error) {
       logger.error('Failed to setup Gmail watch:', error);
-      throw error;
+      throw new ApiError(503, 'Failed to setup Gmail watch');
     }
   }
 
-  async processNewEmails(notification) {
+  async processWebhook(notification) {
     try {
       await this.ensureInitialized();
 
-      if (!notification?.historyId) {
-        throw new Error('Invalid notification: missing historyId');
+      const decodedData = Buffer.from(notification.message.data, 'base64').toString();
+      const data = JSON.parse(decodedData);
+
+      if (!data?.historyId) {
+        throw new ApiError(400, 'Invalid notification: missing historyId');
       }
+
+      logger.info('Processing Gmail webhook', {
+        historyId: data.historyId,
+        emailAddress: data.emailAddress
+      });
 
       const response = await this.gmail.users.history.list({
         userId: this.userEmail,
-        startHistoryId: notification.historyId,
-        historyTypes: ['messageAdded']
+        startHistoryId: data.historyId,
+        historyTypes: ['messageAdded'],
+        labelId: 'INBOX'
       });
 
       const messages = response.data.history || [];
       logger.info('Processing new messages:', {
         count: messages.length,
-        historyId: notification.historyId
+        historyId: data.historyId
       });
 
+      const processedMessages = [];
       for (const history of messages) {
-        for (const message of history.messages || []) {
-          await this.processMessage(message.id);
+        for (const message of history.messagesAdded || []) {
+          const processedMessage = await this.processMessage(message.message.id);
+          if (processedMessage) {
+            processedMessages.push(processedMessage);
+          }
         }
       }
 
       return {
-        processed: messages.length,
-        historyId: response.data.historyId
+        success: true,
+        processed: processedMessages.length,
+        messages: processedMessages
       };
     } catch (error) {
-      logger.error('Error processing new emails:', error);
+      logger.error('Error processing webhook:', error);
       throw error;
     }
   }
@@ -154,16 +174,21 @@ class GmailService {
     try {
       const message = await this.gmail.users.messages.get({
         userId: this.userEmail,
-        id: messageId
+        id: messageId,
+        format: 'metadata',
+        metadataHeaders: ['From', 'Subject', 'Date', 'Message-ID', 'References']
       });
 
       const emailData = this.extractEmailData(message.data);
-      await this.createOrUpdateTicket(emailData);
+      const ticket = await this.createOrUpdateTicket(emailData);
 
       logger.info('Message processed successfully:', {
         messageId,
+        ticketId: ticket.id,
         subject: emailData.subject
       });
+
+      return ticket;
     } catch (error) {
       logger.error('Error processing message:', {
         messageId,
@@ -175,30 +200,17 @@ class GmailService {
 
   extractEmailData(message) {
     const headers = message.payload.headers;
+    const getHeader = (name) => headers.find(h => h.name === name)?.value || '';
+
     return {
       messageId: message.id,
       threadId: message.threadId,
-      subject: headers.find(h => h.name === 'Subject')?.value || '',
-      from: headers.find(h => h.name === 'From')?.value || '',
-      content: this.extractContent(message.payload)
+      subject: getHeader('Subject'),
+      from: getHeader('From'),
+      date: getHeader('Date'),
+      references: getHeader('References'),
+      inReplyTo: getHeader('In-Reply-To')
     };
-  }
-
-  extractContent(payload) {
-    if (payload.body.data) {
-      return Buffer.from(payload.body.data, 'base64').toString();
-    }
-
-    if (payload.parts) {
-      const textPart = payload.parts.find(part => 
-        part.mimeType === 'text/plain' || part.mimeType === 'text/html'
-      );
-      if (textPart?.body?.data) {
-        return Buffer.from(textPart.body.data, 'base64').toString();
-      }
-    }
-
-    return '';
   }
 
   async createOrUpdateTicket(emailData) {
@@ -215,47 +227,51 @@ class GmailService {
       defaults: { name, email }
     });
 
-    // Find existing ticket by thread ID
-    const existingTicket = await Ticket.findOne({
-      where: { gmailThreadId: emailData.threadId }
-    });
-
-    if (existingTicket) {
-      // Add message to existing ticket
-      await Message.create({
-        ticketId: existingTicket.id,
-        content: emailData.content,
-        author: customer.email,
-        type: 'email'
-      });
-
-      await existingTicket.update({
-        lastMessageAt: new Date()
-      });
-
-      return existingTicket;
-    } else {
-      // Create new ticket
-      const ticket = await Ticket.create({
-        subject: emailData.subject,
+    // Find existing ticket by thread ID or create new one
+    const [ticket, created] = await Ticket.findOrCreate({
+      where: { gmailThreadId: emailData.threadId },
+      defaults: {
+        subject: emailData.subject || 'No Subject',
         status: 'open',
         priority: 'medium',
         category: 'email',
         customerId: customer.id,
-        gmailThreadId: emailData.threadId,
         gmailMessageId: emailData.messageId,
         lastMessageAt: new Date()
+      }
+    });
+
+    if (!created) {
+      await ticket.update({
+        lastMessageAt: new Date()
+      });
+    }
+
+    // Create message
+    await Message.create({
+      ticketId: ticket.id,
+      content: emailData.subject, // We'll update this with full content later
+      direction: 'inbound',
+      customerId: customer.id
+    });
+
+    return ticket;
+  }
+
+  async getWatchStatus() {
+    try {
+      const response = await this.gmail.users.getProfile({
+        userId: this.userEmail
       });
 
-      // Add first message
-      await Message.create({
-        ticketId: ticket.id,
-        content: emailData.content,
-        author: customer.email,
-        type: 'email'
-      });
-
-      return ticket;
+      return {
+        historyId: response.data.historyId,
+        messagesTotal: response.data.messagesTotal,
+        threadsTotal: response.data.threadsTotal
+      };
+    } catch (error) {
+      logger.error('Error getting Gmail watch status:', error);
+      throw new ApiError(503, 'Failed to get Gmail watch status');
     }
   }
 }

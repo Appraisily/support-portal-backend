@@ -6,6 +6,7 @@ const routes = require('./routes');
 const logger = require('./utils/logger');
 const { initializeDatabase } = require('./config/database');
 const { errorHandler } = require('./middleware/errorHandler');
+const secretManager = require('./utils/secretManager');
 
 const app = express();
 
@@ -32,9 +33,15 @@ app.get('/_health', (req, res) => {
 
 const startServer = async () => {
   try {
-    // Initialize database
-    await initializeDatabase();
+    // 1. First initialize secrets
+    await secretManager.ensureInitialized();
+    logger.info('Secrets loaded successfully');
 
+    // 2. Then initialize database with loaded secrets
+    await initializeDatabase();
+    logger.info('Database initialized successfully');
+
+    // 3. Finally start the server
     const port = process.env.PORT || 8080;
     const server = app.listen(port, '0.0.0.0', () => {
       logger.info(`Server running on port ${port}`, {

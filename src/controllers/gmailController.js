@@ -13,10 +13,7 @@ exports.handleWebhook = async (req, res) => {
         body: JSON.stringify(req.body),
         hasMessage: !!req.body?.message 
       });
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid webhook data'
-      });
+      throw new ApiError(400, 'Invalid webhook data');
     }
 
     // Log raw webhook data
@@ -26,23 +23,17 @@ exports.handleWebhook = async (req, res) => {
       subscription: req.body.subscription
     });
 
-    // Decode and log notification data
-    const decodedData = Buffer.from(req.body.message.data, 'base64').toString();
-    const notification = JSON.parse(decodedData);
-    
-    logger.info('Decoded webhook data', {
-      emailAddress: notification.emailAddress,
-      historyId: notification.historyId
-    });
-
     // Process webhook asynchronously
-    res.status(200).json({ success: true, message: 'Webhook received' });
+    res.status(200).json({ 
+      success: true, 
+      message: 'Webhook received' 
+    });
 
     const result = await GmailService.processWebhook(req.body);
     
     logger.info('Webhook processing completed', {
       processed: result.processed,
-      tickets: result.tickets,
+      messages: result.messages,
       processingTime: Date.now() - startTime
     });
 
@@ -55,9 +46,9 @@ exports.handleWebhook = async (req, res) => {
     });
     
     if (!res.headersSent) {
-      res.status(500).json({
+      res.status(error.statusCode || 500).json({
         success: false,
-        message: 'Error processing webhook'
+        message: error.message || 'Error processing webhook'
       });
     }
   }
@@ -66,19 +57,12 @@ exports.handleWebhook = async (req, res) => {
 exports.healthCheck = async (req, res) => {
   try {
     await GmailService.ensureInitialized();
-    
-    const profile = await GmailService.gmail.users.getProfile({
-      userId: 'me'
-    });
-    
-    const watchStatus = await GmailService.getWatchStatus();
+    const status = await GmailService.getWatchStatus();
     
     res.status(200).json({
       success: true,
       status: 'healthy',
-      email: profile.data.emailAddress,
-      historyId: profile.data.historyId,
-      watchStatus
+      gmail: status
     });
   } catch (error) {
     logger.error('Gmail health check failed', {
@@ -89,7 +73,7 @@ exports.healthCheck = async (req, res) => {
     res.status(503).json({ 
       success: false,
       status: 'unhealthy',
-      message: 'Gmail service health check failed'
+      message: error.message || 'Gmail service health check failed'
     });
   }
 };

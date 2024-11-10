@@ -1,6 +1,7 @@
 const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
 const path = require('path');
+const secretManager = require('../utils/secretManager');
 
 let sequelize = null;
 
@@ -9,44 +10,50 @@ const initializeDatabase = async () => {
     return sequelize;
   }
 
-  const config = {
-    dialect: 'postgres',
-    logging: (msg) => logger.debug('Sequelize:', { query: msg }),
-    pool: {
-      max: 5,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    }
-  };
-
-  // Configure database connection based on environment
-  if (process.env.NODE_ENV === 'production') {
-    // Cloud SQL configuration
-    config.host = process.env.CLOUD_SQL_CONNECTION_NAME ?
-      `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}` :
-      process.env.DB_HOST;
-    config.dialectOptions = {
-      socketPath: process.env.CLOUD_SQL_CONNECTION_NAME ?
-        `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}` :
-        undefined,
-      ssl: false
-    };
-  } else {
-    // Local development configuration
-    config.host = process.env.DB_HOST;
-    config.port = process.env.DB_PORT;
-    config.dialectOptions = {
-      ssl: false
-    };
-  }
-
-  // Common configuration
-  config.database = process.env.DB_NAME;
-  config.username = process.env.DB_USER;
-  config.password = process.env.DB_PASSWORD;
-
   try {
+    // 1. First ensure secrets are loaded
+    logger.info('Loading database secrets...');
+    await secretManager.ensureInitialized();
+    
+    // 2. Configure database connection
+    const config = {
+      dialect: 'postgres',
+      logging: (msg) => logger.debug('Sequelize:', { query: msg }),
+      pool: {
+        max: 5,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
+      }
+    };
+
+    // 3. Configure connection based on environment
+    if (process.env.NODE_ENV === 'production') {
+      // Cloud SQL configuration
+      const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
+      config.host = connectionName ?
+        `/cloudsql/${connectionName}` :
+        process.env.DB_HOST;
+      config.dialectOptions = {
+        socketPath: connectionName ?
+          `/cloudsql/${connectionName}` :
+          undefined,
+        ssl: false
+      };
+    } else {
+      // Local development configuration
+      config.host = process.env.DB_HOST;
+      config.port = process.env.DB_PORT;
+      config.dialectOptions = {
+        ssl: false
+      };
+    }
+
+    // 4. Set credentials from environment (loaded from secrets)
+    config.database = process.env.DB_NAME;
+    config.username = process.env.DB_USER;
+    config.password = process.env.DB_PASSWORD;
+
     logger.info('Initializing database connection...', {
       host: config.host,
       database: config.database,
@@ -54,11 +61,12 @@ const initializeDatabase = async () => {
       environment: process.env.NODE_ENV
     });
 
+    // 5. Create Sequelize instance and test connection
     sequelize = new Sequelize(config);
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
 
-    // Run migrations
+    // 6. Run migrations using Umzug
     logger.info('Running database migrations...');
     const { Umzug, SequelizeStorage } = require('umzug');
     const umzug = new Umzug({
@@ -81,7 +89,7 @@ const initializeDatabase = async () => {
     await umzug.up();
     logger.info('Database migrations completed successfully');
 
-    // Initialize models
+    // 7. Initialize models
     require('../models');
 
     return sequelize;
@@ -89,8 +97,8 @@ const initializeDatabase = async () => {
     logger.error('Database initialization failed:', {
       error: error.message,
       stack: error.stack,
-      host: config.host,
-      database: config.database,
+      host: config?.host,
+      database: config?.database,
       environment: process.env.NODE_ENV
     });
     throw error;
