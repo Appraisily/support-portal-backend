@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
-const { getModels } = require('../config/database');
 const ApiError = require('../utils/apiError');
+const models = require('../models');
 
 class GmailService {
   constructor() {
@@ -10,7 +10,6 @@ class GmailService {
     this.gmail = null;
     this.initialized = false;
     this.initPromise = null;
-    this.models = null;
     this.lastHistoryId = null;
 
     logger.info('Creating Gmail service instance', {
@@ -67,9 +66,6 @@ class GmailService {
         auth: this.oauth2Client
       });
 
-      // Initialize models
-      this.models = await getModels();
-
       // Setup Gmail watch
       await this.setupWatch();
 
@@ -91,7 +87,6 @@ class GmailService {
         });
         logger.info('Stopped existing Gmail watch');
       } catch (error) {
-        // Ignore errors when stopping existing watch
         logger.warn('Error stopping existing watch:', error.message);
       }
 
@@ -164,6 +159,7 @@ class GmailService {
         processed: processedMessages.length,
         messages: processedMessages
       };
+
     } catch (error) {
       logger.error('Error processing webhook:', error);
       throw error;
@@ -175,8 +171,7 @@ class GmailService {
       const message = await this.gmail.users.messages.get({
         userId: this.userEmail,
         id: messageId,
-        format: 'metadata',
-        metadataHeaders: ['From', 'Subject', 'Date', 'Message-ID', 'References']
+        format: 'full'
       });
 
       const emailData = this.extractEmailData(message.data);
@@ -202,6 +197,19 @@ class GmailService {
     const headers = message.payload.headers;
     const getHeader = (name) => headers.find(h => h.name === name)?.value || '';
 
+    // Extract email content
+    let content = '';
+    if (message.payload.body.data) {
+      content = Buffer.from(message.payload.body.data, 'base64').toString();
+    } else if (message.payload.parts) {
+      const textPart = message.payload.parts.find(part => 
+        part.mimeType === 'text/plain' || part.mimeType === 'text/html'
+      );
+      if (textPart?.body?.data) {
+        content = Buffer.from(textPart.body.data, 'base64').toString();
+      }
+    }
+
     return {
       messageId: message.id,
       threadId: message.threadId,
@@ -209,12 +217,13 @@ class GmailService {
       from: getHeader('From'),
       date: getHeader('Date'),
       references: getHeader('References'),
-      inReplyTo: getHeader('In-Reply-To')
+      inReplyTo: getHeader('In-Reply-To'),
+      content
     };
   }
 
   async createOrUpdateTicket(emailData) {
-    const { Customer, Ticket, Message } = this.models;
+    const { Customer, Ticket, Message } = models;
 
     // Extract email address from "From" field
     const emailMatch = emailData.from.match(/<(.+)>/) || [null, emailData.from];
@@ -227,22 +236,40 @@ class GmailService {
       defaults: { name, email }
     });
 
-    // Find existing ticket by thread ID or create new one
-    const [ticket, created] = await Ticket.findOrCreate({
-      where: { gmailThreadId: emailData.threadId },
-      defaults: {
+    // Check if this is a reply to an existing thread
+    let ticket;
+    if (emailData.inReplyTo || emailData.references) {
+      // Look for existing ticket with the referenced message IDs
+      const references = [
+        emailData.inReplyTo,
+        ...(emailData.references ? emailData.references.split(' ') : [])
+      ].filter(Boolean);
+
+      ticket = await Ticket.findOne({
+        where: { gmailMessageId: references }
+      });
+
+      if (ticket) {
+        // Reopen ticket if it was closed
+        if (ticket.status === 'closed') {
+          await ticket.update({
+            status: 'open',
+            lastMessageAt: new Date()
+          });
+        }
+      }
+    }
+
+    // If no existing ticket found, create new one
+    if (!ticket) {
+      ticket = await Ticket.create({
         subject: emailData.subject || 'No Subject',
         status: 'open',
         priority: 'medium',
         category: 'email',
         customerId: customer.id,
+        gmailThreadId: emailData.threadId,
         gmailMessageId: emailData.messageId,
-        lastMessageAt: new Date()
-      }
-    });
-
-    if (!created) {
-      await ticket.update({
         lastMessageAt: new Date()
       });
     }
@@ -250,7 +277,7 @@ class GmailService {
     // Create message
     await Message.create({
       ticketId: ticket.id,
-      content: emailData.subject, // We'll update this with full content later
+      content: emailData.content,
       direction: 'inbound',
       customerId: customer.id
     });
