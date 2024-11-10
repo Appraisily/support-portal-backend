@@ -46,7 +46,12 @@ class GmailService {
       );
 
       this.oauth2Client.setCredentials({
-        refresh_token: process.env.GMAIL_REFRESH_TOKEN
+        refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+        scope: [
+          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/gmail.modify',
+          'https://www.googleapis.com/auth/gmail.metadata'
+        ].join(' ')
       });
 
       this.gmail = google.gmail({
@@ -73,36 +78,57 @@ class GmailService {
         historyId: decodedData.historyId
       });
 
-      const history = await this.gmail.users.history.list({
+      // First, get the full list of messages
+      const messagesList = await this.gmail.users.messages.list({
         userId: 'me',
-        startHistoryId: decodedData.historyId,
-        labelIds: ['INBOX'],
-        maxResults: 100
+        q: 'in:inbox newer_than:1h',
+        maxResults: 10
       });
+
+      logger.info('Retrieved messages list:', {
+        messageCount: messagesList.data.messages?.length || 0
+      });
+
+      if (!messagesList.data.messages || messagesList.data.messages.length === 0) {
+        logger.warn('No recent messages found');
+        return { processed: 0, messages: [], tickets: [] };
+      }
 
       const messages = [];
       const tickets = [];
 
-      if (history.data.history && history.data.history.length > 0) {
-        for (const item of history.data.history) {
-          if (item.messagesAdded) {
-            for (const messageAdded of item.messagesAdded) {
-              const message = messageAdded.message;
-              logger.info('Processing new message:', {
-                messageId: message.id,
-                threadId: message.threadId
-              });
-
-              const emailData = await this.getEmailData(message.id);
-              if (emailData) {
-                messages.push(emailData);
-                const ticket = await this.createOrUpdateTicket(emailData);
-                if (ticket) {
-                  tickets.push(ticket);
-                }
+      // Process each message
+      for (const msg of messagesList.data.messages) {
+        try {
+          logger.info('Processing message:', { messageId: msg.id });
+          
+          const emailData = await this.getEmailData(msg.id);
+          if (emailData) {
+            messages.push(emailData);
+            
+            // Check if this message is already processed
+            const existingTicket = await this.findExistingTicket(emailData.threadId);
+            if (!existingTicket) {
+              const ticket = await this.createOrUpdateTicket(emailData);
+              if (ticket) {
+                tickets.push(ticket);
+                logger.info('Created new ticket:', { 
+                  ticketId: ticket.id,
+                  messageId: msg.id 
+                });
               }
+            } else {
+              logger.info('Ticket already exists:', {
+                ticketId: existingTicket.id,
+                messageId: msg.id
+              });
             }
           }
+        } catch (error) {
+          logger.error('Error processing individual message:', {
+            messageId: msg.id,
+            error: error.message
+          });
         }
       }
 
@@ -124,6 +150,21 @@ class GmailService {
         stack: error.stack
       });
       throw error;
+    }
+  }
+
+  async findExistingTicket(threadId) {
+    try {
+      const models = await getModels();
+      return await models.Ticket.findOne({
+        where: { gmailThreadId: threadId }
+      });
+    } catch (error) {
+      logger.error('Error finding existing ticket:', {
+        threadId,
+        error: error.message
+      });
+      return null;
     }
   }
 
@@ -185,6 +226,11 @@ class GmailService {
         defaults: { name, email }
       });
 
+      logger.info('Customer found/created:', {
+        customerId: customer.id,
+        email: customer.email
+      });
+
       // Check for existing ticket
       let ticket = await Ticket.findOne({
         where: {
@@ -221,16 +267,16 @@ class GmailService {
       }
 
       // Add message
-      await Message.create({
+      const message = await Message.create({
         ticketId: ticket.id,
         content: emailData.content,
         direction: 'inbound',
         customerId: customer.id
       });
 
-      logger.info('Ticket processed successfully:', {
-        ticketId: ticket.id,
-        messageId: emailData.messageId
+      logger.info('Message created:', {
+        messageId: message.id,
+        ticketId: ticket.id
       });
 
       return ticket;
