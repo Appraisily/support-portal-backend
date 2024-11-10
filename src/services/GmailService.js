@@ -1,7 +1,7 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/apiError');
-const models = require('../models');
+const { getModels } = require('../models');
 
 class GmailService {
   constructor() {
@@ -111,62 +111,71 @@ class GmailService {
       return response.data;
     } catch (error) {
       logger.error('Failed to setup Gmail watch:', error);
-      throw new ApiError(503, 'Failed to setup Gmail watch');
+      throw error;
     }
   }
 
-  async processWebhook(notification) {
+  async getWatchStatus() {
     try {
-      await this.ensureInitialized();
-
-      const decodedData = Buffer.from(notification.message.data, 'base64').toString();
-      const data = JSON.parse(decodedData);
-
-      if (!data?.historyId) {
-        throw new ApiError(400, 'Invalid notification: missing historyId');
-      }
-
-      logger.info('Processing Gmail webhook', {
-        historyId: data.historyId,
-        emailAddress: data.emailAddress
+      const profile = await this.gmail.users.getProfile({
+        userId: this.userEmail
       });
 
-      const response = await this.gmail.users.history.list({
+      return {
+        historyId: profile.data.historyId,
+        messagesTotal: profile.data.messagesTotal,
+        threadsTotal: profile.data.threadsTotal
+      };
+    } catch (error) {
+      logger.error('Failed to get watch status:', error);
+      throw error;
+    }
+  }
+
+  async processWebhook(webhookData) {
+    try {
+      const decodedData = JSON.parse(
+        Buffer.from(webhookData.message.data, 'base64').toString()
+      );
+
+      logger.info('Processing webhook data:', {
+        emailAddress: decodedData.emailAddress,
+        historyId: decodedData.historyId
+      });
+
+      const history = await this.gmail.users.history.list({
         userId: this.userEmail,
-        startHistoryId: data.historyId,
-        historyTypes: ['messageAdded'],
-        labelId: 'INBOX'
+        startHistoryId: decodedData.historyId,
+        historyTypes: ['messageAdded']
       });
 
-      const messages = response.data.history || [];
-      logger.info('Processing new messages:', {
-        count: messages.length,
-        historyId: data.historyId
-      });
+      const messages = [];
+      const tickets = [];
 
-      const processedMessages = [];
-      for (const history of messages) {
-        for (const message of history.messagesAdded || []) {
-          const processedMessage = await this.processMessage(message.message.id);
-          if (processedMessage) {
-            processedMessages.push(processedMessage);
+      if (history.data.history) {
+        for (const item of history.data.history) {
+          for (const message of item.messages || []) {
+            const emailData = await this.getEmailData(message.id);
+            messages.push(emailData);
+
+            const ticket = await this.createOrUpdateTicket(emailData);
+            tickets.push(ticket);
           }
         }
       }
 
       return {
-        success: true,
-        processed: processedMessages.length,
-        messages: processedMessages
+        processed: messages.length,
+        messages,
+        tickets
       };
-
     } catch (error) {
       logger.error('Error processing webhook:', error);
       throw error;
     }
   }
 
-  async processMessage(messageId) {
+  async getEmailData(messageId) {
     try {
       const message = await this.gmail.users.messages.get({
         userId: this.userEmail,
@@ -174,18 +183,21 @@ class GmailService {
         format: 'full'
       });
 
-      const emailData = this.extractEmailData(message.data);
-      const ticket = await this.createOrUpdateTicket(emailData);
+      const headers = message.data.payload.headers;
+      const emailData = {
+        messageId: message.data.id,
+        threadId: message.data.threadId,
+        subject: this.getHeader(headers, 'Subject') || 'No Subject',
+        from: this.getHeader(headers, 'From'),
+        to: this.getHeader(headers, 'To'),
+        inReplyTo: this.getHeader(headers, 'In-Reply-To'),
+        references: this.getHeader(headers, 'References'),
+        content: this.extractContent(message.data.payload)
+      };
 
-      logger.info('Message processed successfully:', {
-        messageId,
-        ticketId: ticket.id,
-        subject: emailData.subject
-      });
-
-      return ticket;
+      return emailData;
     } catch (error) {
-      logger.error('Error processing message:', {
+      logger.error('Error getting email data:', {
         messageId,
         error: error.message
       });
@@ -193,36 +205,30 @@ class GmailService {
     }
   }
 
-  extractEmailData(message) {
-    const headers = message.payload.headers;
-    const getHeader = (name) => headers.find(h => h.name === name)?.value || '';
+  getHeader(headers, name) {
+    const header = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
+    return header ? header.value : null;
+  }
 
-    // Extract email content
-    let content = '';
-    if (message.payload.body.data) {
-      content = Buffer.from(message.payload.body.data, 'base64').toString();
-    } else if (message.payload.parts) {
-      const textPart = message.payload.parts.find(part => 
+  extractContent(payload) {
+    if (payload.body.data) {
+      return Buffer.from(payload.body.data, 'base64').toString();
+    }
+
+    if (payload.parts) {
+      const textPart = payload.parts.find(part => 
         part.mimeType === 'text/plain' || part.mimeType === 'text/html'
       );
       if (textPart?.body?.data) {
-        content = Buffer.from(textPart.body.data, 'base64').toString();
+        return Buffer.from(textPart.body.data, 'base64').toString();
       }
     }
 
-    return {
-      messageId: message.id,
-      threadId: message.threadId,
-      subject: getHeader('Subject'),
-      from: getHeader('From'),
-      date: getHeader('Date'),
-      references: getHeader('References'),
-      inReplyTo: getHeader('In-Reply-To'),
-      content
-    };
+    return '';
   }
 
   async createOrUpdateTicket(emailData) {
+    const models = getModels();
     const { Customer, Ticket, Message } = models;
 
     // Extract email address from "From" field
@@ -283,23 +289,6 @@ class GmailService {
     });
 
     return ticket;
-  }
-
-  async getWatchStatus() {
-    try {
-      const response = await this.gmail.users.getProfile({
-        userId: this.userEmail
-      });
-
-      return {
-        historyId: response.data.historyId,
-        messagesTotal: response.data.messagesTotal,
-        threadsTotal: response.data.threadsTotal
-      };
-    } catch (error) {
-      logger.error('Error getting Gmail watch status:', error);
-      throw new ApiError(503, 'Failed to get Gmail watch status');
-    }
   }
 }
 

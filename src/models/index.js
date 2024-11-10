@@ -1,31 +1,48 @@
 const fs = require('fs');
 const path = require('path');
-const { getSequelize } = require('../config/database');
+const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
 
-const sequelize = getSequelize();
+let sequelize = null;
 const models = {};
 
-// Import all model files
-fs.readdirSync(__dirname)
-  .filter(file => 
-    file.indexOf('.') !== 0 && 
-    file !== 'index.js' && 
-    file.slice(-3) === '.js'
-  )
-  .forEach(file => {
-    const model = require(path.join(__dirname, file))(sequelize, sequelize.Sequelize.DataTypes);
-    models[model.name] = model;
+const initialize = async (sequelizeInstance) => {
+  if (!sequelizeInstance) {
+    throw new Error('Sequelize instance required for models initialization');
+  }
+
+  sequelize = sequelizeInstance;
+
+  // Import all model files
+  fs.readdirSync(__dirname)
+    .filter(file => 
+      file.indexOf('.') !== 0 && 
+      file !== 'index.js' && 
+      file.slice(-3) === '.js'
+    )
+    .forEach(file => {
+      const model = require(path.join(__dirname, file))(sequelize, Sequelize.DataTypes);
+      models[model.name] = model;
+    });
+
+  // Set up associations
+  Object.keys(models).forEach(modelName => {
+    if (models[modelName].associate) {
+      models[modelName].associate(models);
+    }
   });
 
-// Set up associations
-Object.keys(models).forEach(modelName => {
-  if (models[modelName].associate) {
-    models[modelName].associate(models);
-  }
-});
+  logger.info('Models initialized successfully');
+  return models;
+};
 
-models.sequelize = sequelize;
-models.Sequelize = sequelize.Sequelize;
-
-module.exports = models;
+module.exports = {
+  initialize,
+  getModels: () => {
+    if (!sequelize) {
+      throw new Error('Models not initialized. Call initialize() first.');
+    }
+    return models;
+  },
+  getSequelize: () => sequelize
+};

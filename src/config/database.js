@@ -2,8 +2,10 @@ const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
 const path = require('path');
 const secretManager = require('../utils/secretManager');
+const models = require('../models');
 
 let sequelize = null;
+let config = null;
 
 const initializeDatabase = async () => {
   if (sequelize) {
@@ -16,7 +18,7 @@ const initializeDatabase = async () => {
     await secretManager.ensureInitialized();
     
     // 2. Configure database connection
-    const config = {
+    config = {
       dialect: 'postgres',
       logging: (msg) => logger.debug('Sequelize:', { query: msg }),
       pool: {
@@ -66,31 +68,34 @@ const initializeDatabase = async () => {
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
 
-    // 6. Run migrations using Umzug
-    logger.info('Running database migrations...');
-    const { Umzug, SequelizeStorage } = require('umzug');
-    const umzug = new Umzug({
-      migrations: { 
-        glob: path.join(__dirname, '../migrations/*.js'),
-        resolve: ({ name, path, context }) => {
-          const migration = require(path);
-          return {
-            name,
-            up: async () => migration.up(context, Sequelize),
-            down: async () => migration.down(context, Sequelize)
-          };
-        }
-      },
-      context: sequelize.getQueryInterface(),
-      storage: new SequelizeStorage({ sequelize }),
-      logger: console
-    });
+    // 6. Initialize models
+    await models.initialize(sequelize);
+    logger.info('Models initialized successfully');
 
-    await umzug.up();
-    logger.info('Database migrations completed successfully');
+    // 7. Run migrations using Umzug
+    if (process.env.NODE_ENV === 'production') {
+      logger.info('Running database migrations...');
+      const { Umzug, SequelizeStorage } = require('umzug');
+      const umzug = new Umzug({
+        migrations: { 
+          glob: path.join(__dirname, '../migrations/*.js'),
+          resolve: ({ name, path, context }) => {
+            const migration = require(path);
+            return {
+              name,
+              up: async () => migration.up(context, Sequelize),
+              down: async () => migration.down(context, Sequelize)
+            };
+          }
+        },
+        context: sequelize.getQueryInterface(),
+        storage: new SequelizeStorage({ sequelize }),
+        logger: console
+      });
 
-    // 7. Initialize models
-    require('../models');
+      await umzug.up();
+      logger.info('Database migrations completed successfully');
+    }
 
     return sequelize;
   } catch (error) {
