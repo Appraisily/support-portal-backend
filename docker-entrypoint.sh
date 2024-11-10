@@ -9,14 +9,6 @@ if [ "$NODE_ENV" = "production" ]; then
         echo "Waiting for Cloud SQL socket..."
         sleep 2
     done
-    
-    echo "Running database migrations..."
-    NODE_ENV=production /app/node_modules/.bin/sequelize-cli db:migrate
-    
-    if [ $? -ne 0 ]; then
-        echo "Migration failed!"
-        exit 1
-    fi
 fi
 
 # Start the application

@@ -12,9 +12,7 @@
     "migrate:create": "sequelize-cli migration:create --name",
     "seed": "sequelize-cli db:seed:all",
     "seed:undo": "sequelize-cli db:seed:undo:all",
-    "lint": "eslint src/",
-    "test:api": "jest --config jest.config.js --testPathPattern=src/__tests__/api/.*\\.test\\.js",
-    "dev:setup": "npm install && npm run migrate && npm run seed"
+    "lint": "eslint src/"
   },
   "dependencies": {
     "@google-cloud/secret-manager": "^5.0.0",
@@ -34,7 +32,8 @@
     "dotenv": "^16.3.1",
     "googleapis": "^128.0.0",
     "multer": "^1.4.5-lts.1",
-    "sequelize-cli": "^6.6.1"
+    "sequelize-cli": "^6.6.1",
+    "umzug": "^3.4.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

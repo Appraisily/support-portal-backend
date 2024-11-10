@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const GmailService = require('../services/GmailService');
+const ApiError = require('../utils/apiError');
 
 exports.handleWebhook = async (req, res) => {
   const startTime = Date.now();
@@ -12,7 +13,10 @@ exports.handleWebhook = async (req, res) => {
         body: JSON.stringify(req.body),
         hasMessage: !!req.body?.message 
       });
-      return res.status(200).send('OK - Invalid data');
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid webhook data'
+      });
     }
 
     // Log raw webhook data
@@ -32,7 +36,7 @@ exports.handleWebhook = async (req, res) => {
     });
 
     // Process webhook asynchronously
-    res.status(200).send('OK');
+    res.status(200).json({ success: true, message: 'Webhook received' });
 
     const result = await GmailService.processWebhook(req.body);
     
@@ -51,7 +55,10 @@ exports.handleWebhook = async (req, res) => {
     });
     
     if (!res.headersSent) {
-      res.status(200).send('Error processed');
+      res.status(500).json({
+        success: false,
+        message: 'Error processing webhook'
+      });
     }
   }
 };
@@ -66,7 +73,8 @@ exports.healthCheck = async (req, res) => {
     
     const watchStatus = await GmailService.getWatchStatus();
     
-    res.json({
+    res.status(200).json({
+      success: true,
       status: 'healthy',
       email: profile.data.emailAddress,
       historyId: profile.data.historyId,
@@ -77,9 +85,11 @@ exports.healthCheck = async (req, res) => {
       error: error.message,
       stack: error.stack
     });
-    res.status(500).json({ 
+    
+    res.status(503).json({ 
+      success: false,
       status: 'unhealthy',
-      error: 'Gmail service health check failed' 
+      message: 'Gmail service health check failed'
     });
   }
 };

@@ -20,9 +20,14 @@ app.use('/api', routes);
 // Error handler
 app.use(errorHandler);
 
-// Health check
+// Root endpoint for basic verification
+app.get('/', (req, res) => {
+  res.status(200).json({ message: 'Support Portal API is running' });
+});
+
+// Health check endpoint - CRITICAL for Cloud Run
 app.get('/_health', (req, res) => {
-  res.json({ status: 'healthy' });
+  res.status(200).json({ status: 'healthy' });
 });
 
 const startServer = async () => {
@@ -31,12 +36,25 @@ const startServer = async () => {
     await initializeDatabase();
 
     const port = process.env.PORT || 8080;
-    app.listen(port, () => {
+    const server = app.listen(port, '0.0.0.0', () => {
       logger.info(`Server running on port ${port}`, {
         environment: process.env.NODE_ENV,
-        nodeVersion: process.versions.node
+        nodeVersion: process.versions.node,
+        port: port
       });
     });
+
+    // Handle shutdown gracefully
+    const shutdown = async () => {
+      logger.info('Shutting down server...');
+      server.close(() => {
+        logger.info('Server shut down complete');
+        process.exit(0);
+      });
+    };
+
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);

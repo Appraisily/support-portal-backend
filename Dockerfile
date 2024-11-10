@@ -25,10 +25,15 @@ RUN mkdir -p /cloudsql && \
     chown node:node /usr/local/bin/docker-entrypoint.sh
 
 # Set production environment variables
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    PORT=8080
 
 # Switch to non-root user
 USER node
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/_health || exit 1
 
 EXPOSE 8080
 

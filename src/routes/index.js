@@ -25,6 +25,14 @@ router.use('/gmail/webhook', gmailRoutes);
 router.use('/tickets', ticketRoutes);
 router.use('/gmail', gmailRoutes);
 
+// 404 handler
+router.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found'
+  });
+});
+
 // Error handling
 router.use(errorHandler);
 

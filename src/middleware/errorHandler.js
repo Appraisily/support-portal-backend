@@ -13,7 +13,7 @@ exports.errorHandler = (err, req, res, next) => {
   if (err instanceof ApiError) {
     return res.status(err.statusCode).json({
       success: false,
-      error: err.message
+      message: err.message
     });
   }
 
@@ -21,7 +21,7 @@ exports.errorHandler = (err, req, res, next) => {
   if (err.name === 'SequelizeValidationError') {
     return res.status(400).json({
       success: false,
-      error: 'Validation error',
+      message: 'Validation error',
       details: err.errors.map(e => ({
         field: e.path,
         message: e.message
@@ -30,14 +30,16 @@ exports.errorHandler = (err, req, res, next) => {
   }
 
   // Handle other errors
-  const statusCode = err.statusCode || 500;
+  const statusCode = err.statusCode && Number.isInteger(err.statusCode) ? 
+    err.statusCode : 500;
+
   const message = process.env.NODE_ENV === 'production' 
     ? 'Internal server error' 
-    : err.message;
+    : err.message || 'Internal server error';
 
   res.status(statusCode).json({
     success: false,
-    error: message,
+    message,
     ...(process.env.NODE_ENV !== 'production' && { stack: err.stack })
   });
 };
