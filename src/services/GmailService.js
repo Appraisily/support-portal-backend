@@ -76,6 +76,212 @@ class GmailService {
     }
   }
 
+  async processWebhook(webhookData) {
+    try {
+      const decodedData = JSON.parse(
+        Buffer.from(webhookData.message.data, 'base64').toString()
+      );
+
+      logger.info('Processing webhook data:', {
+        emailAddress: decodedData.emailAddress,
+        historyId: decodedData.historyId
+      });
+
+      const history = await this.gmail.users.history.list({
+        userId: this.userEmail,
+        startHistoryId: decodedData.historyId,
+        labelIds: ['INBOX'],
+        maxResults: 100
+      });
+
+      const messages = [];
+      const tickets = [];
+
+      if (history.data.history && history.data.history.length > 0) {
+        for (const item of history.data.history) {
+          if (item.messagesAdded) {
+            for (const messageAdded of item.messagesAdded) {
+              const message = messageAdded.message;
+              logger.info('Processing new message:', {
+                messageId: message.id,
+                threadId: message.threadId
+              });
+
+              const emailData = await this.getEmailData(message.id);
+              messages.push(emailData);
+
+              const ticket = await this.createOrUpdateTicket(emailData);
+              if (ticket) {
+                tickets.push(ticket);
+                logger.info('Ticket created/updated:', {
+                  ticketId: ticket.id,
+                  status: ticket.status,
+                  messageId: message.id
+                });
+              }
+            }
+          }
+        }
+      }
+
+      logger.info('Webhook processing completed:', {
+        processedMessages: messages.length,
+        createdTickets: tickets.length,
+        historyId: decodedData.historyId
+      });
+
+      return {
+        processed: messages.length,
+        messages,
+        tickets
+      };
+    } catch (error) {
+      logger.error('Error processing webhook:', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  async getEmailData(messageId) {
+    try {
+      const message = await this.gmail.users.messages.get({
+        userId: this.userEmail,
+        id: messageId,
+        format: 'full'
+      });
+
+      const headers = message.data.payload.headers;
+      const emailData = {
+        messageId: message.data.id,
+        threadId: message.data.threadId,
+        subject: this.getHeader(headers, 'Subject') || 'No Subject',
+        from: this.getHeader(headers, 'From'),
+        to: this.getHeader(headers, 'To'),
+        inReplyTo: this.getHeader(headers, 'In-Reply-To'),
+        references: this.getHeader(headers, 'References'),
+        content: this.extractContent(message.data.payload)
+      };
+
+      logger.info('Email data extracted:', {
+        messageId: emailData.messageId,
+        subject: emailData.subject,
+        from: emailData.from
+      });
+
+      return emailData;
+    } catch (error) {
+      logger.error('Error getting email data:', {
+        messageId,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  async createOrUpdateTicket(emailData) {
+    try {
+      const models = getModels();
+      const { Customer, Ticket, Message } = models;
+
+      // Extract email address and name
+      const emailMatch = emailData.from.match(/<(.+)>/) || [null, emailData.from];
+      const email = emailMatch[1].toLowerCase();
+      const name = emailData.from.split('<')[0].trim();
+
+      logger.info('Processing email for ticket:', {
+        email,
+        subject: emailData.subject,
+        threadId: emailData.threadId
+      });
+
+      // Find or create customer
+      const [customer] = await Customer.findOrCreate({
+        where: { email },
+        defaults: { name, email }
+      });
+
+      // Check for existing ticket
+      let ticket = await Ticket.findOne({
+        where: {
+          gmailThreadId: emailData.threadId
+        }
+      });
+
+      if (ticket) {
+        logger.info('Updating existing ticket:', {
+          ticketId: ticket.id,
+          threadId: emailData.threadId
+        });
+
+        await ticket.update({
+          status: 'open',
+          lastMessageAt: new Date()
+        });
+      } else {
+        logger.info('Creating new ticket from email:', {
+          threadId: emailData.threadId,
+          customerId: customer.id
+        });
+
+        ticket = await Ticket.create({
+          subject: emailData.subject,
+          status: 'open',
+          priority: 'medium',
+          category: 'email',
+          customerId: customer.id,
+          gmailThreadId: emailData.threadId,
+          gmailMessageId: emailData.messageId,
+          lastMessageAt: new Date()
+        });
+      }
+
+      // Add message
+      await Message.create({
+        ticketId: ticket.id,
+        content: emailData.content,
+        direction: 'inbound',
+        customerId: customer.id
+      });
+
+      logger.info('Ticket processed successfully:', {
+        ticketId: ticket.id,
+        messageId: emailData.messageId
+      });
+
+      return ticket;
+    } catch (error) {
+      logger.error('Error creating/updating ticket:', {
+        error: error.message,
+        threadId: emailData.threadId
+      });
+      throw error;
+    }
+  }
+
+  getHeader(headers, name) {
+    const header = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
+    return header ? header.value : null;
+  }
+
+  extractContent(payload) {
+    if (payload.body.data) {
+      return Buffer.from(payload.body.data, 'base64').toString();
+    }
+
+    if (payload.parts) {
+      const textPart = payload.parts.find(part => 
+        part.mimeType === 'text/plain' || part.mimeType === 'text/html'
+      );
+      if (textPart?.body?.data) {
+        return Buffer.from(textPart.body.data, 'base64').toString();
+      }
+    }
+
+    return '';
+  }
+
   async setupWatch() {
     try {
       logger.info('Setting up Gmail watch...');
@@ -113,182 +319,6 @@ class GmailService {
       logger.error('Failed to setup Gmail watch:', error);
       throw error;
     }
-  }
-
-  async getWatchStatus() {
-    try {
-      const profile = await this.gmail.users.getProfile({
-        userId: this.userEmail
-      });
-
-      return {
-        historyId: profile.data.historyId,
-        messagesTotal: profile.data.messagesTotal,
-        threadsTotal: profile.data.threadsTotal
-      };
-    } catch (error) {
-      logger.error('Failed to get watch status:', error);
-      throw error;
-    }
-  }
-
-  async processWebhook(webhookData) {
-    try {
-      const decodedData = JSON.parse(
-        Buffer.from(webhookData.message.data, 'base64').toString()
-      );
-
-      logger.info('Processing webhook data:', {
-        emailAddress: decodedData.emailAddress,
-        historyId: decodedData.historyId
-      });
-
-      const history = await this.gmail.users.history.list({
-        userId: this.userEmail,
-        startHistoryId: decodedData.historyId,
-        historyTypes: ['messageAdded']
-      });
-
-      const messages = [];
-      const tickets = [];
-
-      if (history.data.history) {
-        for (const item of history.data.history) {
-          for (const message of item.messages || []) {
-            const emailData = await this.getEmailData(message.id);
-            messages.push(emailData);
-
-            const ticket = await this.createOrUpdateTicket(emailData);
-            tickets.push(ticket);
-          }
-        }
-      }
-
-      return {
-        processed: messages.length,
-        messages,
-        tickets
-      };
-    } catch (error) {
-      logger.error('Error processing webhook:', error);
-      throw error;
-    }
-  }
-
-  async getEmailData(messageId) {
-    try {
-      const message = await this.gmail.users.messages.get({
-        userId: this.userEmail,
-        id: messageId,
-        format: 'full'
-      });
-
-      const headers = message.data.payload.headers;
-      const emailData = {
-        messageId: message.data.id,
-        threadId: message.data.threadId,
-        subject: this.getHeader(headers, 'Subject') || 'No Subject',
-        from: this.getHeader(headers, 'From'),
-        to: this.getHeader(headers, 'To'),
-        inReplyTo: this.getHeader(headers, 'In-Reply-To'),
-        references: this.getHeader(headers, 'References'),
-        content: this.extractContent(message.data.payload)
-      };
-
-      return emailData;
-    } catch (error) {
-      logger.error('Error getting email data:', {
-        messageId,
-        error: error.message
-      });
-      throw error;
-    }
-  }
-
-  getHeader(headers, name) {
-    const header = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
-    return header ? header.value : null;
-  }
-
-  extractContent(payload) {
-    if (payload.body.data) {
-      return Buffer.from(payload.body.data, 'base64').toString();
-    }
-
-    if (payload.parts) {
-      const textPart = payload.parts.find(part => 
-        part.mimeType === 'text/plain' || part.mimeType === 'text/html'
-      );
-      if (textPart?.body?.data) {
-        return Buffer.from(textPart.body.data, 'base64').toString();
-      }
-    }
-
-    return '';
-  }
-
-  async createOrUpdateTicket(emailData) {
-    const models = getModels();
-    const { Customer, Ticket, Message } = models;
-
-    // Extract email address from "From" field
-    const emailMatch = emailData.from.match(/<(.+)>/) || [null, emailData.from];
-    const email = emailMatch[1].toLowerCase();
-    const name = emailData.from.split('<')[0].trim();
-
-    // Find or create customer
-    const [customer] = await Customer.findOrCreate({
-      where: { email },
-      defaults: { name, email }
-    });
-
-    // Check if this is a reply to an existing thread
-    let ticket;
-    if (emailData.inReplyTo || emailData.references) {
-      // Look for existing ticket with the referenced message IDs
-      const references = [
-        emailData.inReplyTo,
-        ...(emailData.references ? emailData.references.split(' ') : [])
-      ].filter(Boolean);
-
-      ticket = await Ticket.findOne({
-        where: { gmailMessageId: references }
-      });
-
-      if (ticket) {
-        // Reopen ticket if it was closed
-        if (ticket.status === 'closed') {
-          await ticket.update({
-            status: 'open',
-            lastMessageAt: new Date()
-          });
-        }
-      }
-    }
-
-    // If no existing ticket found, create new one
-    if (!ticket) {
-      ticket = await Ticket.create({
-        subject: emailData.subject || 'No Subject',
-        status: 'open',
-        priority: 'medium',
-        category: 'email',
-        customerId: customer.id,
-        gmailThreadId: emailData.threadId,
-        gmailMessageId: emailData.messageId,
-        lastMessageAt: new Date()
-      });
-    }
-
-    // Create message
-    await Message.create({
-      ticketId: ticket.id,
-      content: emailData.content,
-      direction: 'inbound',
-      customerId: customer.id
-    });
-
-    return ticket;
   }
 }
 
