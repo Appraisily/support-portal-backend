@@ -47,7 +47,11 @@ class GmailService {
 
       this.oauth2Client.setCredentials({
         refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-        scope: 'https://mail.google.com/'
+        scope: [
+          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/gmail.modify',
+          'https://www.googleapis.com/auth/gmail.metadata'
+        ].join(' ')
       });
 
       this.gmail = google.gmail({
@@ -74,52 +78,60 @@ class GmailService {
         historyId: decodedData.historyId
       });
 
-      // Get the latest messages directly
-      const messageList = await this.gmail.users.messages.list({
+      const history = await this.gmail.users.history.list({
         userId: 'me',
+        startHistoryId: decodedData.historyId,
         labelIds: ['INBOX'],
-        maxResults: 10,
-        q: 'newer_than:1h'
+        historyTypes: ['messageAdded']
       });
 
-      logger.info('Retrieved messages:', {
-        count: messageList.data.messages?.length || 0
+      logger.info('Retrieved history:', {
+        hasHistory: !!history.data.history,
+        itemCount: history.data.history?.length || 0
       });
 
       const messages = [];
       const tickets = [];
 
-      if (messageList.data.messages) {
-        for (const messageInfo of messageList.data.messages) {
-          try {
-            logger.info('Processing message:', { messageId: messageInfo.id });
-            
-            const emailData = await this.getEmailData(messageInfo.id);
-            if (emailData) {
-              messages.push(emailData);
-              
-              const existingTicket = await this.findExistingTicket(emailData.threadId);
-              if (!existingTicket) {
-                const ticket = await this.createOrUpdateTicket(emailData);
-                if (ticket) {
-                  tickets.push(ticket);
-                  logger.info('Created new ticket:', { 
-                    ticketId: ticket.id,
-                    messageId: messageInfo.id 
-                  });
+      if (history.data.history) {
+        for (const item of history.data.history) {
+          if (item.messagesAdded) {
+            for (const messageAdded of item.messagesAdded) {
+              try {
+                const message = messageAdded.message;
+                logger.info('Processing message:', { 
+                  messageId: message.id,
+                  threadId: message.threadId
+                });
+                
+                const emailData = await this.getEmailData(message.id);
+                if (emailData) {
+                  messages.push(emailData);
+                  
+                  const existingTicket = await this.findExistingTicket(emailData.threadId);
+                  if (!existingTicket) {
+                    const ticket = await this.createOrUpdateTicket(emailData);
+                    if (ticket) {
+                      tickets.push(ticket);
+                      logger.info('Created new ticket:', { 
+                        ticketId: ticket.id,
+                        messageId: message.id 
+                      });
+                    }
+                  } else {
+                    logger.info('Ticket already exists:', {
+                      ticketId: existingTicket.id,
+                      messageId: message.id
+                    });
+                  }
                 }
-              } else {
-                logger.info('Ticket already exists:', {
-                  ticketId: existingTicket.id,
-                  messageId: messageInfo.id
+              } catch (error) {
+                logger.error('Error processing individual message:', {
+                  messageId: messageAdded.message.id,
+                  error: error.message
                 });
               }
             }
-          } catch (error) {
-            logger.error('Error processing individual message:', {
-              messageId: messageInfo.id,
-              error: error.message
-            });
           }
         }
       }
