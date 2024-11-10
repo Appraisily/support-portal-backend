@@ -47,11 +47,7 @@ class GmailService {
 
       this.oauth2Client.setCredentials({
         refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-        scope: [
-          'https://www.googleapis.com/auth/gmail.readonly',
-          'https://www.googleapis.com/auth/gmail.modify',
-          'https://www.googleapis.com/auth/gmail.metadata'
-        ].join(' ')
+        scope: 'https://mail.google.com/'
       });
 
       this.gmail = google.gmail({
@@ -78,57 +74,58 @@ class GmailService {
         historyId: decodedData.historyId
       });
 
-      // First, get the full list of messages
-      const messagesList = await this.gmail.users.messages.list({
+      const history = await this.gmail.users.history.list({
         userId: 'me',
-        q: 'in:inbox newer_than:1h',
-        maxResults: 10
+        startHistoryId: decodedData.historyId,
+        historyTypes: ['messageAdded'],
+        labelId: 'INBOX'
       });
 
-      logger.info('Retrieved messages list:', {
-        messageCount: messagesList.data.messages?.length || 0
+      logger.info('Retrieved history:', {
+        hasHistory: !!history.data.history,
+        itemCount: history.data.history?.length || 0
       });
-
-      if (!messagesList.data.messages || messagesList.data.messages.length === 0) {
-        logger.warn('No recent messages found');
-        return { processed: 0, messages: [], tickets: [] };
-      }
 
       const messages = [];
       const tickets = [];
 
-      // Process each message
-      for (const msg of messagesList.data.messages) {
-        try {
-          logger.info('Processing message:', { messageId: msg.id });
-          
-          const emailData = await this.getEmailData(msg.id);
-          if (emailData) {
-            messages.push(emailData);
-            
-            // Check if this message is already processed
-            const existingTicket = await this.findExistingTicket(emailData.threadId);
-            if (!existingTicket) {
-              const ticket = await this.createOrUpdateTicket(emailData);
-              if (ticket) {
-                tickets.push(ticket);
-                logger.info('Created new ticket:', { 
-                  ticketId: ticket.id,
-                  messageId: msg.id 
+      if (history.data.history) {
+        for (const item of history.data.history) {
+          if (item.messagesAdded) {
+            for (const messageAdded of item.messagesAdded) {
+              try {
+                const message = messageAdded.message;
+                logger.info('Processing message:', { messageId: message.id });
+                
+                const emailData = await this.getEmailData(message.id);
+                if (emailData) {
+                  messages.push(emailData);
+                  
+                  const existingTicket = await this.findExistingTicket(emailData.threadId);
+                  if (!existingTicket) {
+                    const ticket = await this.createOrUpdateTicket(emailData);
+                    if (ticket) {
+                      tickets.push(ticket);
+                      logger.info('Created new ticket:', { 
+                        ticketId: ticket.id,
+                        messageId: message.id 
+                      });
+                    }
+                  } else {
+                    logger.info('Ticket already exists:', {
+                      ticketId: existingTicket.id,
+                      messageId: message.id
+                    });
+                  }
+                }
+              } catch (error) {
+                logger.error('Error processing individual message:', {
+                  messageId: messageAdded.message.id,
+                  error: error.message
                 });
               }
-            } else {
-              logger.info('Ticket already exists:', {
-                ticketId: existingTicket.id,
-                messageId: msg.id
-              });
             }
           }
-        } catch (error) {
-          logger.error('Error processing individual message:', {
-            messageId: msg.id,
-            error: error.message
-          });
         }
       }
 
@@ -209,7 +206,6 @@ class GmailService {
       const models = await getModels();
       const { Customer, Ticket, Message } = models;
 
-      // Extract email address and name
       const emailMatch = emailData.from.match(/<(.+)>/) || [null, emailData.from];
       const email = emailMatch[1].toLowerCase();
       const name = emailData.from.split('<')[0].trim() || email.split('@')[0];
@@ -220,7 +216,6 @@ class GmailService {
         threadId: emailData.threadId
       });
 
-      // Find or create customer
       const [customer] = await Customer.findOrCreate({
         where: { email },
         defaults: { name, email }
@@ -231,7 +226,6 @@ class GmailService {
         email: customer.email
       });
 
-      // Check for existing ticket
       let ticket = await Ticket.findOne({
         where: {
           gmailThreadId: emailData.threadId
@@ -266,7 +260,6 @@ class GmailService {
         });
       }
 
-      // Add message
       const message = await Message.create({
         ticketId: ticket.id,
         content: emailData.content,
@@ -317,7 +310,6 @@ class GmailService {
     try {
       logger.info('Setting up Gmail watch...');
 
-      // Stop any existing watch
       try {
         await this.gmail.users.stop({
           userId: 'me'
@@ -327,7 +319,6 @@ class GmailService {
         logger.warn('Error stopping existing watch:', error.message);
       }
 
-      // Start new watch
       const response = await this.gmail.users.watch({
         userId: 'me',
         requestBody: {
