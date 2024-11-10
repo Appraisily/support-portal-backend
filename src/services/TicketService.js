@@ -1,7 +1,7 @@
 const logger = require('../utils/logger');
 const { initializeDatabase } = require('../config/database');
 const ApiError = require('../utils/apiError');
-const { Sequelize } = require('sequelize');
+const { Op } = require('sequelize');
 
 class TicketService {
   constructor() {
@@ -53,8 +53,16 @@ class TicketService {
       });
 
       const where = {};
-      if (status) where.status = status;
-      if (priority) where.priority = priority;
+      
+      // Validate status before adding to where clause
+      if (status && ['open', 'in_progress', 'closed'].includes(status)) {
+        where.status = status;
+      }
+      
+      // Validate priority before adding to where clause
+      if (priority && ['low', 'medium', 'high', 'urgent'].includes(priority)) {
+        where.priority = priority;
+      }
 
       const { rows: tickets, count } = await this.models.Ticket.findAndCountAll({
         where,
@@ -62,6 +70,11 @@ class TicketService {
           {
             model: this.models.Customer,
             as: 'customer',
+            attributes: ['id', 'name', 'email']
+          },
+          {
+            model: this.models.User,
+            as: 'assignedTo',
             attributes: ['id', 'name', 'email']
           }
         ],
@@ -83,11 +96,18 @@ class TicketService {
           subject: ticket.subject,
           status: ticket.status,
           priority: ticket.priority,
+          category: ticket.category,
           customer: ticket.customer ? {
             id: ticket.customer.id,
             name: ticket.customer.name,
             email: ticket.customer.email
           } : null,
+          assignedTo: ticket.assignedTo ? {
+            id: ticket.assignedTo.id,
+            name: ticket.assignedTo.name,
+            email: ticket.assignedTo.email
+          } : null,
+          lastMessageAt: ticket.lastMessageAt,
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt
         })),
@@ -122,6 +142,11 @@ class TicketService {
             model: this.models.Message,
             as: 'messages',
             order: [['createdAt', 'ASC']]
+          },
+          {
+            model: this.models.User,
+            as: 'assignedTo',
+            attributes: ['id', 'name', 'email']
           }
         ]
       });
@@ -139,6 +164,28 @@ class TicketService {
         ticketId: id
       });
       throw new ApiError(500, 'Error retrieving ticket');
+    }
+  }
+
+  async findByGmailIds(threadId, messageId) {
+    try {
+      await this.ensureInitialized();
+      
+      return await this.models.Ticket.findOne({
+        where: {
+          [Op.or]: [
+            { gmailThreadId: threadId },
+            { gmailMessageId: messageId }
+          ]
+        }
+      });
+    } catch (error) {
+      logger.error('Error finding ticket by Gmail IDs:', {
+        error: error.message,
+        threadId,
+        messageId
+      });
+      throw error;
     }
   }
 
@@ -165,6 +212,11 @@ class TicketService {
       const ticket = await this.models.Ticket.findByPk(id);
       if (!ticket) {
         throw new ApiError(404, 'Ticket not found');
+      }
+
+      // Validate status if provided
+      if (data.status && !['open', 'in_progress', 'closed'].includes(data.status)) {
+        throw new ApiError(400, 'Invalid status value');
       }
 
       await ticket.update(data);
@@ -194,6 +246,11 @@ class TicketService {
       const reply = await this.models.Message.create({
         ticketId,
         ...data
+      });
+
+      // Update ticket's last message timestamp
+      await ticket.update({
+        lastMessageAt: new Date()
       });
 
       logger.info('Reply added successfully', {

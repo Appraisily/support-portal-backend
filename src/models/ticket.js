@@ -12,6 +12,11 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: 'ticketId',
         as: 'messages'
       });
+
+      Ticket.belongsTo(models.User, {
+        foreignKey: 'assignedToId',
+        as: 'assignedTo'
+      });
     }
   }
 
@@ -27,11 +32,17 @@ module.exports = (sequelize, DataTypes) => {
     },
     status: {
       type: DataTypes.ENUM('open', 'in_progress', 'closed'),
-      defaultValue: 'open'
+      defaultValue: 'open',
+      validate: {
+        isIn: [['open', 'in_progress', 'closed']]
+      }
     },
     priority: {
       type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
-      defaultValue: 'medium'
+      defaultValue: 'medium',
+      validate: {
+        isIn: [['low', 'medium', 'high', 'urgent']]
+      }
     },
     category: {
       type: DataTypes.STRING,
@@ -41,7 +52,14 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: 'Customers',
+        model: 'customers',
+        key: 'id'
+      }
+    },
+    assignedToId: {
+      type: DataTypes.UUID,
+      references: {
+        model: 'users',
         key: 'id'
       }
     },
@@ -61,7 +79,18 @@ module.exports = (sequelize, DataTypes) => {
     sequelize,
     modelName: 'Ticket',
     tableName: 'tickets',
-    timestamps: true
+    timestamps: true,
+    indexes: [
+      {
+        fields: ['status']
+      },
+      {
+        fields: ['gmailThreadId']
+      },
+      {
+        fields: ['gmailMessageId']
+      }
+    ]
   });
 
   return Ticket;
