@@ -75,7 +75,16 @@ class GmailService {
 
       logger.info('Processing webhook data:', {
         emailAddress: decodedData.emailAddress,
-        historyId: decodedData.historyId
+        historyId: decodedData.historyId,
+        rawData: webhookData.message.data
+      });
+
+      // Get history with debug info
+      logger.debug('Fetching history with params:', {
+        userId: 'me',
+        startHistoryId: decodedData.historyId,
+        labelIds: ['INBOX'],
+        historyTypes: ['messageAdded']
       });
 
       const history = await this.gmail.users.history.list({
@@ -87,7 +96,8 @@ class GmailService {
 
       logger.info('Retrieved history:', {
         hasHistory: !!history.data.history,
-        itemCount: history.data.history?.length || 0
+        itemCount: history.data.history?.length || 0,
+        rawHistoryData: JSON.stringify(history.data)
       });
 
       const messages = [];
@@ -95,40 +105,73 @@ class GmailService {
 
       if (history.data.history) {
         for (const item of history.data.history) {
+          logger.debug('Processing history item:', {
+            historyId: item.id,
+            hasMessagesAdded: !!item.messagesAdded,
+            messagesCount: item.messagesAdded?.length || 0
+          });
+
           if (item.messagesAdded) {
             for (const messageAdded of item.messagesAdded) {
               try {
                 const message = messageAdded.message;
                 logger.info('Processing message:', { 
                   messageId: message.id,
-                  threadId: message.threadId
+                  threadId: message.threadId,
+                  labelIds: message.labelIds
                 });
                 
                 const emailData = await this.getEmailData(message.id);
                 if (emailData) {
+                  logger.debug('Email data retrieved:', {
+                    messageId: message.id,
+                    subject: emailData.subject,
+                    from: emailData.from,
+                    hasContent: !!emailData.content
+                  });
+
                   messages.push(emailData);
                   
                   const existingTicket = await this.findExistingTicket(emailData.threadId);
                   if (!existingTicket) {
+                    logger.debug('Creating new ticket for thread:', {
+                      threadId: emailData.threadId,
+                      subject: emailData.subject
+                    });
+
                     const ticket = await this.createOrUpdateTicket(emailData);
                     if (ticket) {
                       tickets.push(ticket);
                       logger.info('Created new ticket:', { 
                         ticketId: ticket.id,
-                        messageId: message.id 
+                        messageId: message.id,
+                        subject: ticket.subject,
+                        status: ticket.status
+                      });
+                    } else {
+                      logger.warn('Failed to create ticket:', {
+                        messageId: message.id,
+                        threadId: emailData.threadId
                       });
                     }
                   } else {
                     logger.info('Ticket already exists:', {
                       ticketId: existingTicket.id,
-                      messageId: message.id
+                      messageId: message.id,
+                      status: existingTicket.status
                     });
                   }
+                } else {
+                  logger.warn('Failed to get email data:', {
+                    messageId: message.id,
+                    threadId: message.threadId
+                  });
                 }
               } catch (error) {
                 logger.error('Error processing individual message:', {
                   messageId: messageAdded.message.id,
-                  error: error.message
+                  error: error.message,
+                  stack: error.stack
                 });
               }
             }
@@ -151,7 +194,8 @@ class GmailService {
     } catch (error) {
       logger.error('Error processing webhook:', {
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
+        webhookData: JSON.stringify(webhookData)
       });
       throw error;
     }
@@ -160,13 +204,22 @@ class GmailService {
   async findExistingTicket(threadId) {
     try {
       const models = await getModels();
-      return await models.Ticket.findOne({
+      const ticket = await models.Ticket.findOne({
         where: { gmailThreadId: threadId }
       });
+
+      logger.debug('Searching for existing ticket:', {
+        threadId,
+        found: !!ticket,
+        ticketId: ticket?.id
+      });
+
+      return ticket;
     } catch (error) {
       logger.error('Error finding existing ticket:', {
         threadId,
-        error: error.message
+        error: error.message,
+        stack: error.stack
       });
       return null;
     }
@@ -174,6 +227,8 @@ class GmailService {
 
   async getEmailData(messageId) {
     try {
+      logger.debug('Fetching email data:', { messageId });
+
       const message = await this.gmail.users.messages.get({
         userId: 'me',
         id: messageId,
@@ -195,14 +250,16 @@ class GmailService {
       logger.info('Email data extracted:', {
         messageId: emailData.messageId,
         subject: emailData.subject,
-        from: emailData.from
+        from: emailData.from,
+        contentLength: emailData.content?.length || 0
       });
 
       return emailData;
     } catch (error) {
       logger.error('Error getting email data:', {
         messageId,
-        error: error.message
+        error: error.message,
+        stack: error.stack
       });
       return null;
     }
@@ -220,9 +277,11 @@ class GmailService {
       logger.info('Processing email for ticket:', {
         email,
         subject: emailData.subject,
-        threadId: emailData.threadId
+        threadId: emailData.threadId,
+        messageId: emailData.messageId
       });
 
+      logger.debug('Creating/finding customer:', { email, name });
       const [customer] = await Customer.findOrCreate({
         where: { email },
         defaults: { name, email }
@@ -230,7 +289,9 @@ class GmailService {
 
       logger.info('Customer found/created:', {
         customerId: customer.id,
-        email: customer.email
+        email: customer.email,
+        name: customer.name,
+        isNew: customer.isNewRecord
       });
 
       let ticket = await Ticket.findOne({
@@ -242,7 +303,8 @@ class GmailService {
       if (ticket) {
         logger.info('Updating existing ticket:', {
           ticketId: ticket.id,
-          threadId: emailData.threadId
+          threadId: emailData.threadId,
+          oldStatus: ticket.status
         });
 
         await ticket.update({
@@ -252,7 +314,8 @@ class GmailService {
       } else {
         logger.info('Creating new ticket from email:', {
           threadId: emailData.threadId,
-          customerId: customer.id
+          customerId: customer.id,
+          subject: emailData.subject
         });
 
         ticket = await Ticket.create({
@@ -265,6 +328,12 @@ class GmailService {
           gmailMessageId: emailData.messageId,
           lastMessageAt: new Date()
         });
+
+        logger.debug('New ticket created:', {
+          ticketId: ticket.id,
+          status: ticket.status,
+          threadId: ticket.gmailThreadId
+        });
       }
 
       const message = await Message.create({
@@ -276,14 +345,18 @@ class GmailService {
 
       logger.info('Message created:', {
         messageId: message.id,
-        ticketId: ticket.id
+        ticketId: ticket.id,
+        direction: message.direction,
+        contentLength: message.content.length
       });
 
       return ticket;
     } catch (error) {
       logger.error('Error creating/updating ticket:', {
         error: error.message,
-        threadId: emailData.threadId
+        stack: error.stack,
+        threadId: emailData.threadId,
+        subject: emailData.subject
       });
       return null;
     }
