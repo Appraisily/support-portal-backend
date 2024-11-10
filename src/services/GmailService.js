@@ -74,57 +74,52 @@ class GmailService {
         historyId: decodedData.historyId
       });
 
-      const history = await this.gmail.users.history.list({
+      // Get the latest messages directly
+      const messageList = await this.gmail.users.messages.list({
         userId: 'me',
-        startHistoryId: decodedData.historyId,
-        historyTypes: ['messageAdded'],
-        labelId: 'INBOX'
+        labelIds: ['INBOX'],
+        maxResults: 10,
+        q: 'newer_than:1h'
       });
 
-      logger.info('Retrieved history:', {
-        hasHistory: !!history.data.history,
-        itemCount: history.data.history?.length || 0
+      logger.info('Retrieved messages:', {
+        count: messageList.data.messages?.length || 0
       });
 
       const messages = [];
       const tickets = [];
 
-      if (history.data.history) {
-        for (const item of history.data.history) {
-          if (item.messagesAdded) {
-            for (const messageAdded of item.messagesAdded) {
-              try {
-                const message = messageAdded.message;
-                logger.info('Processing message:', { messageId: message.id });
-                
-                const emailData = await this.getEmailData(message.id);
-                if (emailData) {
-                  messages.push(emailData);
-                  
-                  const existingTicket = await this.findExistingTicket(emailData.threadId);
-                  if (!existingTicket) {
-                    const ticket = await this.createOrUpdateTicket(emailData);
-                    if (ticket) {
-                      tickets.push(ticket);
-                      logger.info('Created new ticket:', { 
-                        ticketId: ticket.id,
-                        messageId: message.id 
-                      });
-                    }
-                  } else {
-                    logger.info('Ticket already exists:', {
-                      ticketId: existingTicket.id,
-                      messageId: message.id
-                    });
-                  }
+      if (messageList.data.messages) {
+        for (const messageInfo of messageList.data.messages) {
+          try {
+            logger.info('Processing message:', { messageId: messageInfo.id });
+            
+            const emailData = await this.getEmailData(messageInfo.id);
+            if (emailData) {
+              messages.push(emailData);
+              
+              const existingTicket = await this.findExistingTicket(emailData.threadId);
+              if (!existingTicket) {
+                const ticket = await this.createOrUpdateTicket(emailData);
+                if (ticket) {
+                  tickets.push(ticket);
+                  logger.info('Created new ticket:', { 
+                    ticketId: ticket.id,
+                    messageId: messageInfo.id 
+                  });
                 }
-              } catch (error) {
-                logger.error('Error processing individual message:', {
-                  messageId: messageAdded.message.id,
-                  error: error.message
+              } else {
+                logger.info('Ticket already exists:', {
+                  ticketId: existingTicket.id,
+                  messageId: messageInfo.id
                 });
               }
             }
+          } catch (error) {
+            logger.error('Error processing individual message:', {
+              messageId: messageInfo.id,
+              error: error.message
+            });
           }
         }
       }
@@ -322,8 +317,9 @@ class GmailService {
       const response = await this.gmail.users.watch({
         userId: 'me',
         requestBody: {
-          labelIds: ['INBOX'],
-          topicName: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`
+          labelIds: ['INBOX', 'UNREAD'],
+          topicName: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/topics/gmail-notifications`,
+          labelFilterAction: 'include'
         }
       });
 
