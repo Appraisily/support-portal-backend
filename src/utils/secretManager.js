@@ -8,7 +8,9 @@ class SecretManager {
     this.initialized = false;
     this.initPromise = null;
     this.requiredSecrets = [
+      'DB_USER',
       'DB_PASSWORD',
+      'DB_NAME',
       'JWT_SECRET',
       'OPENAI_API_KEY',
       'SALES_SPREADSHEET_ID',
@@ -28,9 +30,7 @@ class SecretManager {
   }
 
   async getSecret(name) {
-    if (!this.initialized) {
-      await this.ensureInitialized();
-    }
+    await this.ensureInitialized();
     return this.secrets.get(name) || process.env[name];
   }
 
@@ -40,25 +40,27 @@ class SecretManager {
     try {
       logger.info('Starting secrets loading process');
 
-      const results = await Promise.allSettled(
+      // Load secrets in parallel
+      const results = await Promise.all(
         this.requiredSecrets.map(async (secretName) => {
           try {
-            // First check if it's already in environment variables
+            // First check environment variables
             if (process.env[secretName]) {
-              logger.info(`Secret ${secretName} found in environment variables`);
+              logger.info(`Using ${secretName} from environment variables`);
               this.secrets.set(secretName, process.env[secretName]);
               return { secretName, success: true, source: 'env' };
             }
 
-            // If not in env, try to fetch from Secret Manager
+            // Then try Secret Manager
             const [version] = await this.client.accessSecretVersion({
               name: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/secrets/${secretName}/versions/latest`,
             });
 
             const value = version.payload.data.toString();
             this.secrets.set(secretName, value);
-            process.env[secretName] = value;
+            process.env[secretName] = value; // Set environment variable
             
+            logger.info(`Loaded ${secretName} from Secret Manager`);
             return { secretName, success: true, source: 'secret-manager' };
           } catch (error) {
             logger.error(`Failed to load secret ${secretName}:`, {
@@ -70,8 +72,8 @@ class SecretManager {
         })
       );
 
-      const succeeded = results.filter(r => r.status === 'fulfilled' && r.value.success);
-      const failed = results.filter(r => r.status === 'rejected' || !r.value.success);
+      const succeeded = results.filter(r => r.success);
+      const failed = results.filter(r => !r.success);
 
       logger.info('Secrets loading completed', {
         total: results.length,
@@ -79,13 +81,13 @@ class SecretManager {
         failed: failed.length
       });
 
-      // Check if we have all required database secrets
-      const hasRequiredSecrets = ['DB_USER', 'DB_PASSWORD', 'DB_NAME'].every(
-        secret => process.env[secret]
+      // Verify all required secrets are loaded
+      const missingSecrets = this.requiredSecrets.filter(
+        secret => !this.secrets.has(secret) && !process.env[secret]
       );
 
-      if (!hasRequiredSecrets) {
-        logger.error('Missing required database secrets');
+      if (missingSecrets.length > 0) {
+        logger.error('Missing required secrets:', { missingSecrets });
         return false;
       }
 

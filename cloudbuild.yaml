@@ -39,13 +39,12 @@ steps:
       - >-
         NODE_ENV=production,
         GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,
-        CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},
-        DB_HOST=/cloudsql/${_CLOUD_SQL_CONNECTION_NAME},
-        DB_NAME=${_DB_NAME},
-        DB_USER=${_DB_USER},
-        DB_PASSWORD=${_DB_PASSWORD}
+        CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME}
       - '--set-secrets'
       - >-
+        DB_USER=DB_USER:latest,
+        DB_PASSWORD=DB_PASSWORD:latest,
+        DB_NAME=DB_NAME:latest,
         JWT_SECRET=jwt-secret:latest,
         OPENAI_API_KEY=OPENAI_API_KEY:latest,
         SALES_SPREADSHEET_ID=SALES_SPREADSHEET_ID:latest,
@@ -57,6 +56,3 @@ images:
 
 substitutions:
   _CLOUD_SQL_CONNECTION_NAME: 'civil-forge-403609:us-central1:support-portal-db'
-  _DB_NAME: 'support_portal'
-  _DB_USER: 'support_portal_user'
-  _DB_PASSWORD: 'T9@mX#5bQ'
