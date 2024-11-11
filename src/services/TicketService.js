@@ -54,12 +54,10 @@ class TicketService {
 
       const where = {};
       
-      // Validate status before adding to where clause
       if (status && ['open', 'in_progress', 'closed'].includes(status)) {
         where.status = status;
       }
       
-      // Validate priority before adding to where clause
       if (priority && ['low', 'medium', 'high', 'urgent'].includes(priority)) {
         where.priority = priority;
       }
@@ -214,7 +212,6 @@ class TicketService {
         throw new ApiError(404, 'Ticket not found');
       }
 
-      // Validate status if provided
       if (data.status && !['open', 'in_progress', 'closed'].includes(data.status)) {
         throw new ApiError(400, 'Invalid status value');
       }
@@ -243,10 +240,32 @@ class TicketService {
         throw new ApiError(404, 'Ticket not found');
       }
 
+      // Validate required fields
+      if (!data.content) {
+        throw new ApiError(400, 'Reply content is required');
+      }
+
+      if (!data.direction || !['inbound', 'outbound'].includes(data.direction)) {
+        throw new ApiError(400, 'Valid direction (inbound/outbound) is required');
+      }
+
+      // Create the reply message
       const reply = await this.models.Message.create({
         ticketId,
-        ...data
+        content: data.content,
+        direction: data.direction,
+        userId: data.userId
       });
+
+      // Handle attachments if present
+      if (data.attachments && data.attachments.length > 0) {
+        await this.models.MessageAttachment.bulkCreate(
+          data.attachments.map(attachment => ({
+            messageId: reply.id,
+            attachmentId: attachment.id
+          }))
+        );
+      }
 
       // Update ticket's last message timestamp
       await ticket.update({
@@ -255,18 +274,21 @@ class TicketService {
 
       logger.info('Reply added successfully', {
         ticketId,
-        messageId: reply.id
+        messageId: reply.id,
+        direction: data.direction
       });
 
       return reply;
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      
       logger.error('Error adding reply:', {
         error: error.message,
         ticketId,
         data
       });
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
       throw new ApiError(500, 'Error adding reply');
     }
   }

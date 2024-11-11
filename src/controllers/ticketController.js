@@ -67,10 +67,21 @@ exports.replyToTicket = async (req, res, next) => {
   try {
     const reply = await ticketService.addReply(req.params.id, {
       content: req.body.content,
-      userId: req.user.id
+      direction: req.body.direction || 'outbound', // Default to outbound if not specified
+      userId: req.user.id,
+      attachments: req.body.attachments
     });
-    res.status(201).json({ success: true, data: reply });
+    
+    res.status(201).json({ 
+      success: true, 
+      data: reply 
+    });
   } catch (error) {
+    logger.error('Error in ticket reply:', {
+      ticketId: req.params.id,
+      error: error.message,
+      stack: error.stack
+    });
     next(error);
   }
 };

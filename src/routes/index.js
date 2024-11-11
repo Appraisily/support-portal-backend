@@ -3,6 +3,7 @@ const router = express.Router();
 const ticketRoutes = require('./ticketRoutes');
 const gmailRoutes = require('./gmailRoutes');
 const authRoutes = require('./authRoutes');
+const emailRoutes = require('./emailRoutes');
 const logger = require('../utils/logger');
 const { errorHandler } = require('../middleware/errorHandler');
 
@@ -24,6 +25,7 @@ router.use('/gmail/webhook', gmailRoutes);
 // Protected routes
 router.use('/tickets', ticketRoutes);
 router.use('/gmail', gmailRoutes);
+router.use('/email', emailRoutes);
 
 // 404 handler
 router.use((req, res) => {
