@@ -48,8 +48,9 @@ class GmailService {
       this.oauth2Client.setCredentials({
         refresh_token: process.env.GMAIL_REFRESH_TOKEN,
         scope: [
-          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://mail.google.com/',
           'https://www.googleapis.com/auth/gmail.modify',
+          'https://www.googleapis.com/auth/gmail.readonly',
           'https://www.googleapis.com/auth/gmail.metadata'
         ].join(' ')
       });
@@ -79,7 +80,6 @@ class GmailService {
         rawData: webhookData.message.data
       });
 
-      // First get the latest messages
       logger.debug('Fetching messages...', {
         userId: 'me',
         labelIds: ['INBOX', 'UNREAD']
@@ -104,7 +104,6 @@ class GmailService {
       const messages = [];
       const tickets = [];
 
-      // Process each message
       for (const messageData of messagesResponse.data.messages) {
         try {
           logger.info('Processing message:', { 
@@ -140,7 +139,6 @@ class GmailService {
                   status: ticket.status
                 });
 
-                // Mark message as read after processing
                 await this.gmail.users.messages.modify({
                   userId: 'me',
                   id: messageData.id,
@@ -229,7 +227,15 @@ class GmailService {
       const message = await this.gmail.users.messages.get({
         userId: 'me',
         id: messageId,
-        format: 'full'
+        format: 'metadata',
+        metadataHeaders: ['From', 'To', 'Subject', 'Date', 'Message-ID', 'References', 'In-Reply-To']
+      });
+
+      // Get the full message content in a separate call
+      const fullMessage = await this.gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'raw'
       });
 
       const headers = message.data.payload.headers;
@@ -241,7 +247,7 @@ class GmailService {
         to: this.getHeader(headers, 'To'),
         inReplyTo: this.getHeader(headers, 'In-Reply-To'),
         references: this.getHeader(headers, 'References'),
-        content: this.extractContent(message.data.payload)
+        content: this.decodeRawContent(fullMessage.data.raw)
       };
 
       logger.info('Email data extracted:', {
@@ -259,6 +265,26 @@ class GmailService {
         stack: error.stack
       });
       return null;
+    }
+  }
+
+  decodeRawContent(raw) {
+    try {
+      const buff = Buffer.from(raw, 'base64');
+      const text = buff.toString('utf-8');
+      
+      // Extract body content between boundaries if present
+      const bodyMatch = text.match(/Content-Type: text\/plain[\s\S]*?\r?\n\r?\n([\s\S]*?)(?=\r?\n--)/i);
+      if (bodyMatch && bodyMatch[1]) {
+        return bodyMatch[1].trim();
+      }
+      
+      // Fallback: return everything after the first empty line
+      const parts = text.split(/\r?\n\r?\n/);
+      return parts.length > 1 ? parts.slice(1).join('\n\n').trim() : text;
+    } catch (error) {
+      logger.error('Error decoding raw content:', error);
+      return '';
     }
   }
 
@@ -362,25 +388,6 @@ class GmailService {
   getHeader(headers, name) {
     const header = headers.find(h => h.name.toLowerCase() === name.toLowerCase());
     return header ? header.value : '';
-  }
-
-  extractContent(payload) {
-    if (!payload) return '';
-
-    if (payload.mimeType === 'text/plain' && payload.body.data) {
-      return Buffer.from(payload.body.data, 'base64').toString();
-    }
-
-    if (payload.parts) {
-      const textPart = payload.parts.find(part => 
-        part.mimeType === 'text/plain' || part.mimeType === 'text/html'
-      );
-      if (textPart?.body?.data) {
-        return Buffer.from(textPart.body.data, 'base64').toString();
-      }
-    }
-
-    return '';
   }
 
   async setupWatch() {
