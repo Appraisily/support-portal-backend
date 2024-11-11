@@ -35,11 +35,9 @@ class GmailService {
     try {
       logger.info('Initializing Gmail service...');
       
-      // These are the minimum required scopes for reading emails
       const SCOPES = [
-        'https://mail.google.com/',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/gmail.labels'
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.modify'
       ];
 
       this.oauth2Client = new google.auth.OAuth2(
@@ -74,8 +72,7 @@ class GmailService {
 
       logger.info('Processing webhook data:', {
         emailAddress: decodedData.emailAddress,
-        historyId: decodedData.historyId,
-        rawData: webhookData.message.data
+        historyId: decodedData.historyId
       });
 
       const messagesResponse = await this.gmail.users.messages.list({
@@ -108,13 +105,12 @@ class GmailService {
           if (emailData) {
             messages.push(emailData);
             
-            const existingTicket = await this.findExistingTicket(emailData.threadId);
+            const existingTicket = await this.findExistingTicket(messageData.threadId);
             if (!existingTicket) {
               const ticket = await this.createOrUpdateTicket(emailData);
               if (ticket) {
                 tickets.push(ticket);
                 
-                // Mark message as read
                 await this.gmail.users.messages.modify({
                   userId: 'me',
                   id: messageData.id,
@@ -128,7 +124,8 @@ class GmailService {
         } catch (error) {
           logger.error('Error processing message:', {
             messageId: messageData.id,
-            error: error.message
+            error: error.message,
+            stack: error.stack
           });
         }
       }
@@ -149,18 +146,17 @@ class GmailService {
       const message = await this.gmail.users.messages.get({
         userId: 'me',
         id: messageId,
-        format: 'metadata',
-        metadataHeaders: ['From', 'To', 'Subject', 'Date', 'Message-ID', 'References', 'In-Reply-To']
+        format: 'full'
       });
 
-      // Get the full message content in a separate call
-      const fullMessage = await this.gmail.users.messages.get({
-        userId: 'me',
-        id: messageId,
-        format: 'raw'
-      });
+      if (!message.data.payload || !message.data.payload.headers) {
+        logger.error('Invalid message format:', { messageId });
+        return null;
+      }
 
       const headers = message.data.payload.headers;
+      const content = this.extractContent(message.data.payload);
+
       return {
         messageId: message.data.id,
         threadId: message.data.threadId,
@@ -169,7 +165,7 @@ class GmailService {
         to: this.getHeader(headers, 'To'),
         inReplyTo: this.getHeader(headers, 'In-Reply-To'),
         references: this.getHeader(headers, 'References'),
-        content: Buffer.from(fullMessage.data.raw, 'base64').toString('utf-8')
+        content: content
       };
     } catch (error) {
       logger.error('Error getting email data:', {
@@ -180,14 +176,46 @@ class GmailService {
     }
   }
 
+  extractContent(payload) {
+    if (!payload) return '';
+
+    if (payload.body && payload.body.data) {
+      return Buffer.from(payload.body.data, 'base64').toString();
+    }
+
+    if (payload.parts) {
+      for (const part of payload.parts) {
+        if (part.mimeType === 'text/plain' && part.body && part.body.data) {
+          return Buffer.from(part.body.data, 'base64').toString();
+        }
+      }
+      
+      // Fallback to first part with content if no text/plain
+      for (const part of payload.parts) {
+        if (part.body && part.body.data) {
+          return Buffer.from(part.body.data, 'base64').toString();
+        }
+      }
+    }
+
+    return '';
+  }
+
   async createOrUpdateTicket(emailData) {
     try {
+      if (!emailData || !emailData.from || !emailData.subject) {
+        logger.error('Invalid email data for ticket creation:', emailData);
+        return null;
+      }
+
       const models = await getModels();
       const { Customer, Ticket, Message } = models;
 
       const emailMatch = emailData.from.match(/<(.+)>/) || [null, emailData.from];
       const email = emailMatch[1].toLowerCase();
       const name = emailData.from.split('<')[0].trim() || email.split('@')[0];
+
+      logger.info('Creating/updating ticket for:', { email, name });
 
       const [customer] = await Customer.findOrCreate({
         where: { email },
@@ -199,13 +227,15 @@ class GmailService {
       });
 
       if (ticket) {
+        logger.info('Updating existing ticket:', { ticketId: ticket.id });
         await ticket.update({
           status: 'open',
           lastMessageAt: new Date()
         });
       } else {
+        logger.info('Creating new ticket');
         ticket = await Ticket.create({
-          subject: emailData.subject,
+          subject: emailData.subject.substring(0, 255),
           status: 'open',
           priority: 'medium',
           category: 'email',
@@ -218,14 +248,26 @@ class GmailService {
 
       await Message.create({
         ticketId: ticket.id,
-        content: emailData.content,
+        content: emailData.content || '',
         direction: 'inbound',
+        customerId: customer.id
+      });
+
+      logger.info('Ticket processed successfully:', {
+        ticketId: ticket.id,
         customerId: customer.id
       });
 
       return ticket;
     } catch (error) {
-      logger.error('Error creating/updating ticket:', error);
+      logger.error('Error creating/updating ticket:', {
+        error: error.message,
+        stack: error.stack,
+        emailData: {
+          subject: emailData?.subject,
+          threadId: emailData?.threadId
+        }
+      });
       return null;
     }
   }
