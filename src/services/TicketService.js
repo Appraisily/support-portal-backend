@@ -54,8 +54,21 @@ class TicketService {
 
       const where = {};
       
-      if (status && ['open', 'in_progress', 'closed'].includes(status)) {
-        where.status = status;
+      // Map frontend status to database status
+      if (status) {
+        switch (status.toLowerCase()) {
+          case 'pending':
+            where.status = 'open';
+            break;
+          case 'in_progress':
+            where.status = 'in_progress';
+            break;
+          case 'closed':
+            where.status = 'closed';
+            break;
+          default:
+            logger.warn('Invalid status filter:', { status });
+        }
       }
       
       if (priority && ['low', 'medium', 'high', 'urgent'].includes(priority)) {
@@ -92,7 +105,7 @@ class TicketService {
         tickets: tickets.map(ticket => ({
           id: ticket.id,
           subject: ticket.subject,
-          status: ticket.status,
+          status: ticket.status === 'open' ? 'pending' : ticket.status, // Map back to frontend status
           priority: ticket.priority,
           category: ticket.category,
           customer: ticket.customer ? {
@@ -153,6 +166,11 @@ class TicketService {
         throw new ApiError(404, 'Ticket not found');
       }
 
+      // Map status for frontend
+      if (ticket.status === 'open') {
+        ticket.status = 'pending';
+      }
+
       return ticket;
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -191,8 +209,19 @@ class TicketService {
     try {
       await this.ensureInitialized();
       
+      // Map frontend status to database status
+      if (data.status === 'pending') {
+        data.status = 'open';
+      }
+      
       const ticket = await this.models.Ticket.create(data);
       logger.info('Ticket created successfully', { ticketId: ticket.id });
+      
+      // Map status back for response
+      if (ticket.status === 'open') {
+        ticket.status = 'pending';
+      }
+      
       return ticket;
     } catch (error) {
       logger.error('Error creating ticket:', {
@@ -212,11 +241,18 @@ class TicketService {
         throw new ApiError(404, 'Ticket not found');
       }
 
-      if (data.status && !['open', 'in_progress', 'closed'].includes(data.status)) {
-        throw new ApiError(400, 'Invalid status value');
+      // Map frontend status to database status
+      if (data.status === 'pending') {
+        data.status = 'open';
       }
 
       await ticket.update(data);
+      
+      // Map status back for response
+      if (ticket.status === 'open') {
+        ticket.status = 'pending';
+      }
+      
       logger.info('Ticket updated successfully', { ticketId: id });
       return ticket;
     } catch (error) {
