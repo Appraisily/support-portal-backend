@@ -14,15 +14,11 @@ class GmailService {
   }
 
   async ensureInitialized() {
-    if (this.initialized) {
-      return;
-    }
-
-    if (!this.initPromise) {
-      this.initPromise = this._initialize();
-    }
+    if (this.initialized) return;
+    if (this.initPromise) return this.initPromise;
 
     try {
+      this.initPromise = this._initialize();
       await this.initPromise;
       this.initialized = true;
     } catch (error) {
@@ -39,18 +35,18 @@ class GmailService {
     try {
       logger.info('Initializing Gmail service...');
       
-      this.oauth2Client = new google.auth.OAuth2(
-        process.env.GMAIL_CLIENT_ID,
-        process.env.GMAIL_CLIENT_SECRET,
-        'https://developers.google.com/oauthplayground'
-      );
-
       // These are the minimum required scopes for reading emails
       const SCOPES = [
         'https://mail.google.com/',
         'https://www.googleapis.com/auth/gmail.modify',
         'https://www.googleapis.com/auth/gmail.labels'
       ];
+
+      this.oauth2Client = new google.auth.OAuth2(
+        process.env.GMAIL_CLIENT_ID,
+        process.env.GMAIL_CLIENT_SECRET,
+        'https://developers.google.com/oauthplayground'
+      );
 
       this.oauth2Client.setCredentials({
         refresh_token: process.env.GMAIL_REFRESH_TOKEN,
@@ -143,10 +139,7 @@ class GmailService {
         tickets
       };
     } catch (error) {
-      logger.error('Error processing webhook:', {
-        error: error.message,
-        stack: error.stack
-      });
+      logger.error('Error processing webhook:', error);
       throw error;
     }
   }
@@ -168,7 +161,7 @@ class GmailService {
       });
 
       const headers = message.data.payload.headers;
-      const emailData = {
+      return {
         messageId: message.data.id,
         threadId: message.data.threadId,
         subject: this.getHeader(headers, 'Subject') || 'No Subject',
@@ -178,14 +171,6 @@ class GmailService {
         references: this.getHeader(headers, 'References'),
         content: Buffer.from(fullMessage.data.raw, 'base64').toString('utf-8')
       };
-
-      logger.info('Email data extracted:', {
-        messageId: emailData.messageId,
-        subject: emailData.subject,
-        from: emailData.from
-      });
-
-      return emailData;
     } catch (error) {
       logger.error('Error getting email data:', {
         messageId,
@@ -240,10 +225,7 @@ class GmailService {
 
       return ticket;
     } catch (error) {
-      logger.error('Error creating/updating ticket:', {
-        error: error.message,
-        threadId: emailData.threadId
-      });
+      logger.error('Error creating/updating ticket:', error);
       return null;
     }
   }
