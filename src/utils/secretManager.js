@@ -7,15 +7,15 @@ class SecretManager {
     this.secrets = new Map();
     this.initialized = false;
     this.initPromise = null;
+    // Note: jwt-secret is the actual name in Secret Manager (not JWT_SECRET)
     this.requiredSecrets = [
       'DB_USER',
       'DB_PASSWORD',
       'DB_NAME',
-      'JWT_SECRET',
+      'jwt-secret',  // This is the correct secret name
       'OPENAI_API_KEY',
       'SALES_SPREADSHEET_ID',
-      'PENDING_APPRAISALS_SPREADSHEET_ID',
-      'COMPLETED_APPRAISALS_SPREADSHEET_ID'
+      'PENDING_APPRAISALS_SPREADSHEET_ID'  // Used for both pending and completed sheets
     ];
   }
 
@@ -31,6 +31,12 @@ class SecretManager {
 
   async getSecret(name) {
     await this.ensureInitialized();
+    
+    // Special case for JWT_SECRET since it's stored as jwt-secret
+    if (name === 'JWT_SECRET') {
+      return this.secrets.get('jwt-secret') || process.env['jwt-secret'];
+    }
+    
     return this.secrets.get(name) || process.env[name];
   }
 
@@ -58,7 +64,13 @@ class SecretManager {
 
             const value = version.payload.data.toString();
             this.secrets.set(secretName, value);
-            process.env[secretName] = value; // Set environment variable
+            
+            // Set environment variable - handle special case for jwt-secret
+            if (secretName === 'jwt-secret') {
+              process.env.JWT_SECRET = value;
+            } else {
+              process.env[secretName] = value;
+            }
             
             logger.info(`Loaded ${secretName} from Secret Manager`);
             return { secretName, success: true, source: 'secret-manager' };
