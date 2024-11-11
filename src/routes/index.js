@@ -1,39 +1,26 @@
 const express = require('express');
 const router = express.Router();
+const { authenticate } = require('../middleware/auth');
 const ticketRoutes = require('./ticketRoutes');
-const gmailRoutes = require('./gmailRoutes');
+const messageRoutes = require('./messageRoutes');
+const attachmentRoutes = require('./attachmentRoutes');
 const authRoutes = require('./authRoutes');
-const logger = require('../utils/logger');
-const { errorHandler } = require('../middleware/errorHandler');
+const userRoutes = require('./userRoutes');
+const gmailRoutes = require('./gmailRoutes');
+const analyticsRoutes = require('./analyticsRoutes');
+const customerRoutes = require('./customerRoutes');
+const predefinedReplyRoutes = require('./predefinedReplyRoutes');
+const analysisRoutes = require('./analysisRoutes');
 
-// Log incoming requests
-router.use((req, res, next) => {
-  logger.debug('Incoming request', {
-    method: req.method,
-    path: req.path,
-    query: req.query,
-    ip: req.ip
-  });
-  next();
-});
-
-// Public routes
 router.use('/auth', authRoutes);
-router.use('/gmail/webhook', gmailRoutes);
-
-// Protected routes
-router.use('/tickets', ticketRoutes);
-router.use('/gmail', gmailRoutes);
-
-// 404 handler
-router.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found'
-  });
-});
-
-// Error handling
-router.use(errorHandler);
+router.use('/tickets', authenticate, ticketRoutes);
+router.use('/messages', authenticate, messageRoutes);
+router.use('/attachments', authenticate, attachmentRoutes);
+router.use('/users', authenticate, userRoutes);
+router.use('/gmail', authenticate, gmailRoutes);
+router.use('/analytics', authenticate, analyticsRoutes);
+router.use('/customers', authenticate, customerRoutes);
+router.use('/predefined-replies', authenticate, predefinedReplyRoutes);
+router.use('/analysis', authenticate, analysisRoutes);
 
 module.exports = router;

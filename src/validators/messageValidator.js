@@ -1,4 +1,3 @@
-// src/validators/messageValidator.js
 const { body } = require('express-validator');
 
 exports.validateMessage = [

@@ -1,7 +1,7 @@
 steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/support-portal-backend', '--target', 'production', '.']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/support-portal-backend', '.']
   
   # Push the container image
   - name: 'gcr.io/cloud-builders/docker'
@@ -31,22 +31,21 @@ steps:
       - '10'
       - '--port'
       - '8080'
-      - '--timeout'
-      - '300s'
-      - '--add-cloudsql-instances'
-      - '${_CLOUD_SQL_CONNECTION_NAME}'
       - '--set-env-vars'
-      - 'NODE_ENV=production,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME}'
+      - 'NODE_ENV=production,PORT=8080,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,STORAGE_BUCKET=support-portal-attachments-$PROJECT_ID'
       - '--set-secrets'
       - >-
-        DB_HOST=DB_HOST:latest,
         DB_NAME=DB_NAME:latest,
         DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
-        JWT_SECRET=jwt-secret:latest
+        GMAIL_CLIENT_ID=GMAIL_CLIENT_ID:latest,
+        GMAIL_CLIENT_SECRET=GMAIL_CLIENT_SECRET:latest,
+        GMAIL_REFRESH_TOKEN=GMAIL_REFRESH_TOKEN:latest,
+        jwt-secret=jwt-secret:latest,
+        OPENAI_API_KEY=OPENAI_API_KEY:latest
 
 images:
   - 'gcr.io/$PROJECT_ID/support-portal-backend'
 
-substitutions:
-  _CLOUD_SQL_CONNECTION_NAME: 'civil-forge-403609:us-central1:support-portal-db'
+options:
+  logging: CLOUD_LOGGING_ONLY

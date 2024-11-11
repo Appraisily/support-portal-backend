@@ -1,26 +1,5 @@
-const { Model } = require('sequelize');
-
 module.exports = (sequelize, DataTypes) => {
-  class Ticket extends Model {
-    static associate(models) {
-      Ticket.belongsTo(models.Customer, {
-        foreignKey: 'customerId',
-        as: 'customer'
-      });
-
-      Ticket.hasMany(models.Message, {
-        foreignKey: 'ticketId',
-        as: 'messages'
-      });
-
-      Ticket.belongsTo(models.User, {
-        foreignKey: 'assignedToId',
-        as: 'assignedTo'
-      });
-    }
-  }
-
-  Ticket.init({
+  const Ticket = sequelize.define('Ticket', {
     id: {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
@@ -31,67 +10,42 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     status: {
-      type: DataTypes.ENUM('open', 'in_progress', 'closed'),
-      defaultValue: 'open',
-      validate: {
-        isIn: [['open', 'in_progress', 'closed']]
-      }
+      type: DataTypes.ENUM('open', 'solved', 'pending'),
+      defaultValue: 'open'
     },
     priority: {
       type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
-      defaultValue: 'medium',
-      validate: {
-        isIn: [['low', 'medium', 'high', 'urgent']]
-      }
+      defaultValue: 'medium'
     },
     category: {
       type: DataTypes.STRING,
       allowNull: false
     },
-    customerId: {
-      type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'customers',
-        key: 'id'
-      }
-    },
-    assignedToId: {
-      type: DataTypes.UUID,
-      references: {
-        model: 'users',
-        key: 'id'
-      }
-    },
     gmailThreadId: {
-      type: DataTypes.STRING,
-      unique: true
-    },
-    gmailMessageId: {
-      type: DataTypes.STRING,
-      unique: true
-    },
-    lastMessageAt: {
-      type: DataTypes.DATE,
-      defaultValue: DataTypes.NOW
+      type: DataTypes.STRING
     }
   }, {
-    sequelize,
-    modelName: 'Ticket',
-    tableName: 'tickets',
-    timestamps: true,
-    indexes: [
-      {
-        fields: ['status']
-      },
-      {
-        fields: ['gmailThreadId']
-      },
-      {
-        fields: ['gmailMessageId']
-      }
-    ]
+    timestamps: true
   });
+
+  Ticket.associate = (models) => {
+    Ticket.belongsTo(models.User, {
+      foreignKey: 'assignedToId',
+      as: 'assignedTo'
+    });
+    Ticket.belongsTo(models.Customer, {
+      foreignKey: 'customerId',
+      as: 'customer'
+    });
+    Ticket.hasMany(models.Message, {
+      foreignKey: 'ticketId',
+      as: 'messages'
+    });
+    Ticket.hasMany(models.Attachment, {
+      foreignKey: 'ticketId',
+      as: 'attachments'
+    });
+  };
 
   return Ticket;
 };

@@ -1,116 +1,153 @@
-const { Sequelize } = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const logger = require('../utils/logger');
-const path = require('path');
-const secretManager = require('../utils/secretManager');
-const models = require('../models');
 
-let sequelize = null;
-let config = null;
+const createSequelizeInstance = () => {
+  const {
+    NODE_ENV,
+    DB_NAME,
+    DB_USER,
+    DB_PASSWORD
+  } = process.env;
 
-const initializeDatabase = async () => {
-  if (sequelize) {
-    return sequelize;
-  }
+  logger.info('Environment check:', {
+    nodeEnv: NODE_ENV,
+    dbName: DB_NAME,
+    dbUser: DB_USER,
+    hasPassword: !!DB_PASSWORD
+  });
 
-  try {
-    // 1. First ensure secrets are loaded
-    logger.info('Loading database secrets...');
-    await secretManager.ensureInitialized();
-    
-    // 2. Configure database connection
-    config = {
+  if (NODE_ENV === 'production') {
+    if (!DB_NAME || !DB_USER || !DB_PASSWORD) {
+      const config = {
+        dbName: !!DB_NAME,
+        dbUser: !!DB_USER,
+        dbPassword: !!DB_PASSWORD
+      };
+      logger.error('Missing database configuration:', config);
+      throw new Error('Missing required database configuration environment variables');
+    }
+
+    const config = {
       dialect: 'postgres',
-      logging: (msg) => logger.debug('Sequelize:', { query: msg }),
+      host: '34.57.184.164',
+      port: 5432,
+      database: DB_NAME,
+      username: DB_USER,
+      password: DB_PASSWORD,
+      dialectOptions: {
+        ssl: false,
+        keepAlive: true,
+        connectTimeout: 60000
+      },
       pool: {
         max: 5,
         min: 0,
-        acquire: 30000,
-        idle: 10000
-      }
+        acquire: 60000,
+        idle: 10000,
+        handleDisconnects: true
+      },
+      logging: msg => logger.debug(msg)
     };
 
-    // 3. Configure connection based on environment
-    if (process.env.NODE_ENV === 'production') {
-      // Cloud SQL configuration
-      const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
-      config.host = connectionName ?
-        `/cloudsql/${connectionName}` :
-        process.env.DB_HOST;
-      config.dialectOptions = {
-        socketPath: connectionName ?
-          `/cloudsql/${connectionName}` :
-          undefined,
-        ssl: false
-      };
-    } else {
-      // Local development configuration
-      config.host = process.env.DB_HOST;
-      config.port = process.env.DB_PORT;
-      config.dialectOptions = {
-        ssl: false
-      };
-    }
-
-    // 4. Set credentials from environment (loaded from secrets)
-    config.database = process.env.DB_NAME;
-    config.username = process.env.DB_USER;
-    config.password = process.env.DB_PASSWORD;
-
-    logger.info('Initializing database connection...', {
+    logger.info('Sequelize configuration:', {
+      dialect: config.dialect,
       host: config.host,
+      port: config.port,
       database: config.database,
-      user: config.username,
-      environment: process.env.NODE_ENV
+      username: config.username,
+      poolConfig: config.pool,
+      ssl: config.dialectOptions.ssl
     });
 
-    // 5. Create Sequelize instance and test connection
-    sequelize = new Sequelize(config);
-    await sequelize.authenticate();
-    logger.info('Database connection established successfully');
+    logger.info('Creating Sequelize instance...');
+    const instance = new Sequelize(config);
+    logger.info('Sequelize instance created successfully');
+    return instance;
 
-    // 6. Initialize models
-    await models.initialize(sequelize);
-    logger.info('Models initialized successfully');
-
-    // 7. Run migrations using Umzug
-    if (process.env.NODE_ENV === 'production') {
-      logger.info('Running database migrations...');
-      const { Umzug, SequelizeStorage } = require('umzug');
-      const umzug = new Umzug({
-        migrations: { 
-          glob: path.join(__dirname, '../migrations/*.js'),
-          resolve: ({ name, path, context }) => {
-            const migration = require(path);
-            return {
-              name,
-              up: async () => migration.up(context, Sequelize),
-              down: async () => migration.down(context, Sequelize)
-            };
-          }
-        },
-        context: sequelize.getQueryInterface(),
-        storage: new SequelizeStorage({ sequelize }),
-        logger: console
-      });
-
-      await umzug.up();
-      logger.info('Database migrations completed successfully');
-    }
-
-    return sequelize;
-  } catch (error) {
-    logger.error('Database initialization failed:', {
-      error: error.message,
-      stack: error.stack,
-      host: config?.host,
-      database: config?.database,
-      environment: process.env.NODE_ENV
+  } else {
+    logger.info('Development mode - using SQLite');
+    return new Sequelize({
+      dialect: 'sqlite',
+      storage: ':memory:',
+      logging: msg => logger.debug(msg)
     });
-    throw error;
   }
 };
 
-module.exports = {
-  initializeDatabase,
-  getSequelize: () => sequelize
+const defineModels = (sequelize) => {
+  logger.info('Initializing database models...');
+  const models = {
+    User: require('../models/user')(sequelize, DataTypes),
+    Ticket: require('../models/ticket')(sequelize, DataTypes),
+    Message: require('../models/message')(sequelize, DataTypes),
+    Customer: require('../models/customer')(sequelize, DataTypes),
+    Purchase: require('../models/purchase')(sequelize, DataTypes),
+    PurchaseItem: require('../models/purchaseItem')(sequelize, DataTypes),
+    Attachment: require('../models/attachment')(sequelize, DataTypes),
+    PredefinedReply: require('../models/predefinedReply')(sequelize, DataTypes)
+  };
+
+  logger.info('Setting up model associations...');
+  Object.values(models).forEach(model => {
+    if (model.associate) {
+      model.associate(models);
+    }
+  });
+
+  logger.info('Models initialized successfully');
+  return models;
 };
+
+const connectDB = async (sequelize) => {
+  let retries = 5;
+  const retryDelay = 5000;
+
+  while (retries > 0) {
+    try {
+      logger.info('Attempting database connection...');
+      await sequelize.authenticate();
+      logger.info(`Database connected successfully (${process.env.NODE_ENV} mode)`);
+
+      if (process.env.NODE_ENV === 'development') {
+        logger.info('Synchronizing database models in development mode...');
+        await sequelize.sync({ alter: true });
+        logger.info('Database models synchronized successfully');
+      }
+      return;
+    } catch (error) {
+      retries--;
+      logger.error('Database connection error:', {
+        message: error.message,
+        code: error.original?.code,
+        errno: error.original?.errno,
+        syscall: error.original?.syscall,
+        address: error.original?.address,
+        stack: error.stack
+      });
+
+      if (retries === 0) {
+        logger.error('Database connection failed after all retries. Exiting process.');
+        process.exit(1);
+      }
+
+      logger.warn(`Database connection attempt failed. Retrying in ${retryDelay}ms... (${retries} attempts remaining)`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
+  }
+};
+
+let sequelize;
+try {
+  logger.info('Initializing database connection...');
+  sequelize = createSequelizeInstance();
+  const models = defineModels(sequelize);
+
+  module.exports = {
+    sequelize,
+    connectDB: () => connectDB(sequelize),
+    models
+  };
+} catch (error) {
+  logger.error('Failed to initialize database:', error);
+  process.exit(1);
+}

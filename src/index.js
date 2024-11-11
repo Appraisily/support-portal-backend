@@ -2,74 +2,69 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const routes = require('./routes');
+const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
-const { initializeDatabase } = require('./config/database');
-const { errorHandler } = require('./middleware/errorHandler');
 const secretManager = require('./utils/secretManager');
+const { testDatabaseConnection } = require('./utils/dbTest');
 
 const app = express();
 
-// Middleware
+// Security middleware
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Routes
-app.use('/api', routes);
-
-// Error handler
-app.use(errorHandler);
-
-// Root endpoint for basic verification
-app.get('/', (req, res) => {
-  res.status(200).json({ message: 'Support Portal API is running' });
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100
 });
+app.use(limiter);
 
-// Health check endpoint - CRITICAL for Cloud Run
+// Health check endpoint for Cloud Run
 app.get('/_health', (req, res) => {
-  res.status(200).json({ status: 'healthy' });
+  res.status(200).send('OK');
 });
 
-const startServer = async () => {
+// Load secrets and start server
+async function startServer() {
   try {
-    // 1. First initialize secrets
-    await secretManager.ensureInitialized();
-    logger.info('Secrets loaded successfully');
+    // Load secrets from Secret Manager in production
+    if (process.env.NODE_ENV === 'production') {
+      logger.info('Loading secrets from Secret Manager...');
+      await secretManager.loadSecrets();
+      logger.info('Secrets loaded successfully');
 
-    // 2. Then initialize database with loaded secrets
-    await initializeDatabase();
-    logger.info('Database initialized successfully');
+      // Test database connectivity before proceeding
+      logger.info('Testing database connectivity...');
+      const connectionSuccess = await testDatabaseConnection();
+      if (!connectionSuccess) {
+        throw new Error('Database connectivity test failed');
+      }
+    }
 
-    // 3. Finally start the server
-    const port = process.env.PORT || 8080;
-    const server = app.listen(port, '0.0.0.0', () => {
-      logger.info(`Server running on port ${port}`, {
-        environment: process.env.NODE_ENV,
-        nodeVersion: process.versions.node,
-        port: port
-      });
+    // Initialize database after secrets are loaded
+    const { connectDB } = require('./config/database');
+    await connectDB();
+
+    // Load routes after database is connected
+    const routes = require('./routes');
+    app.use('/api', routes);
+
+    // Error handling middleware
+    const { errorHandler } = require('./middleware/errorHandler');
+    app.use(errorHandler);
+
+    // Start server
+    const PORT = process.env.PORT || 8080;
+    app.listen(PORT, '0.0.0.0', () => {
+      logger.info(`Server running on port ${PORT}`);
     });
-
-    // Handle shutdown gracefully
-    const shutdown = async () => {
-      logger.info('Shutting down server...');
-      server.close(() => {
-        logger.info('Server shut down complete');
-        process.exit(0);
-      });
-    };
-
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
   }
-};
-
-if (require.main === module) {
-  startServer();
 }
 
-module.exports = app;
+startServer();

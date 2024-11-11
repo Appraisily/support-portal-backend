@@ -6,18 +6,7 @@ exports.analyzeCustomer = async (req, res, next) => {
   try {
     const { customerId, message, purchaseHistory } = req.body;
 
-    logger.info('Starting customer analysis', {
-      customerId,
-      hasMessage: !!message,
-      hasPurchaseHistory: !!purchaseHistory
-    });
-
     if (!customerId || !message || !purchaseHistory) {
-      logger.warn('Missing required fields for analysis', {
-        customerId: !!customerId,
-        message: !!message,
-        purchaseHistory: !!purchaseHistory
-      });
       throw new ApiError(400, 'Missing required fields');
     }
 
@@ -27,17 +16,9 @@ exports.analyzeCustomer = async (req, res, next) => {
       purchaseHistory
     );
 
-    logger.info('Analysis completed successfully', {
-      customerId,
-      analysisId: result.id
-    });
-
+    logger.info(`Analysis completed for customer ${customerId}`);
     res.json(result);
   } catch (error) {
-    logger.error('Error during customer analysis', {
-      customerId: req.body?.customerId,
-      error: error.message
-    });
     next(error);
   }
 };

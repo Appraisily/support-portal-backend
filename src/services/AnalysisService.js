@@ -2,6 +2,7 @@ const logger = require('../utils/logger');
 
 class AnalysisService {
   analyzeSentiment(message) {
+    // Basic sentiment analysis based on keywords
     const positiveWords = ['happy', 'great', 'thanks', 'good', 'excellent'];
     const negativeWords = ['bad', 'issue', 'problem', 'wrong', 'error', 'cannot'];
     
@@ -39,10 +40,10 @@ class AnalysisService {
     };
 
     return Object.entries(topicKeywords)
-      .filter(([, keywords]) => 
+      .filter(([_, keywords]) => 
         keywords.some(keyword => message.toLowerCase().includes(keyword))
       )
-      .map(([topicName]) => topicName);
+      .map(([topic]) => topic);
   }
 
   analyzePurchaseHistory(purchaseHistory) {
@@ -93,6 +94,41 @@ class AnalysisService {
     return 'occasional';
   }
 
+  generateSuggestedReply(message, analysis, purchaseHistory) {
+    const context = this.analyzePurchaseHistory(purchaseHistory);
+    const topics = this.analyzeTopics(message);
+    
+    let reply = '';
+
+    // Add personalized greeting based on customer value
+    if (context.totalSpent > 1000) {
+      reply += 'Thank you for being a valued customer. ';
+    }
+
+    // Reference recent purchase if relevant
+    const recentPurchase = purchaseHistory
+      .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    if (recentPurchase && topics.includes('features')) {
+      reply += `I can see your recent ${recentPurchase.items[0].name} purchase. `;
+    }
+
+    // Add main response based on topics
+    if (topics.includes('technical')) {
+      reply += 'I understand you\'re experiencing technical difficulties. ';
+    } else if (topics.includes('billing')) {
+      reply += 'I\'ll help you with your billing concern. ';
+    }
+
+    // Add appropriate closing
+    if (analysis.priority === 'high') {
+      reply += 'I\'ll prioritize this issue and help you get it resolved quickly.';
+    } else {
+      reply += 'I\'ll be happy to help you with this.';
+    }
+
+    return reply;
+  }
+
   async analyzeCustomer(customerId, message, purchaseHistory) {
     try {
       const sentiment = this.analyzeSentiment(message);
@@ -117,34 +153,6 @@ class AnalysisService {
       logger.error('Error analyzing customer data:', error);
       throw error;
     }
-  }
-
-  generateSuggestedReply(message, analysis, purchaseHistory) {
-    let reply = '';
-
-    if (analysis.context.totalSpent > 1000) {
-      reply += 'Thank you for being a valued customer. ';
-    }
-
-    const recentPurchase = purchaseHistory
-      .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-    if (recentPurchase && analysis.topics.includes('features')) {
-      reply += `I can see your recent ${recentPurchase.items[0].name} purchase. `;
-    }
-
-    if (analysis.topics.includes('technical')) {
-      reply += 'I understand you\'re experiencing technical difficulties. ';
-    } else if (analysis.topics.includes('billing')) {
-      reply += 'I\'ll help you with your billing concern. ';
-    }
-
-    if (analysis.priority === 'high') {
-      reply += 'I\'ll prioritize this issue and help you get it resolved quickly.';
-    } else {
-      reply += 'I\'ll be happy to help you with this.';
-    }
-
-    return reply;
   }
 }
 

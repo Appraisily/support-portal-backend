@@ -4,12 +4,8 @@ const logger = require('../utils/logger');
 exports.getTicketAnalytics = async (req, res, next) => {
   try {
     const { startDate, endDate } = req.query;
-    
-    logger.info('Getting ticket analytics', {
-      dateRange: { startDate, endDate }
-    });
-
     const query = {};
+
     if (startDate || endDate) {
       query.createdAt = {};
       if (startDate) query.createdAt.$gte = new Date(startDate);
@@ -60,13 +56,6 @@ exports.getTicketAnalytics = async (req, res, next) => {
       return acc;
     }, { low: 0, medium: 0, high: 0, urgent: 0 });
 
-    logger.info('Analytics data retrieved', {
-      totalTickets,
-      resolvedTickets,
-      statusCount: ticketsByStatus.length,
-      priorityCount: ticketsByPriority.length
-    });
-
     res.json({
       totalTickets,
       resolvedTickets,
@@ -75,10 +64,6 @@ exports.getTicketAnalytics = async (req, res, next) => {
       ticketsByPriority: priorityCounts
     });
   } catch (error) {
-    logger.error('Error getting analytics', {
-      error: error.message,
-      dateRange: req.query
-    });
     next(error);
   }
 };

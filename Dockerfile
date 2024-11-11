@@ -1,40 +1,24 @@
-FROM node:18-slim as base
+FROM node:18-slim
+
 WORKDIR /app
+
+# Copy package files
 COPY package*.json ./
 
-# Development stage with devDependencies
-FROM base as development
+# Install ALL dependencies (including devDependencies temporarily)
 RUN npm install
-COPY . .
-EXPOSE 8080
-CMD ["npm", "run", "dev"]
 
-# Production stage
-FROM base as production
-# Install production dependencies and sequelize-cli globally
-RUN npm ci --only=production && \
-    npm install -g sequelize-cli
-
+# Copy application code
 COPY . .
 
-# Create directory for Cloud SQL and set up entrypoint
-RUN mkdir -p /cloudsql && \
-    chown -R node:node /cloudsql && \
-    cp docker-entrypoint.sh /usr/local/bin/ && \
-    chmod +x /usr/local/bin/docker-entrypoint.sh && \
-    chown node:node /usr/local/bin/docker-entrypoint.sh
+# Remove devDependencies
+RUN npm prune --production
 
-# Set production environment variables
-ENV NODE_ENV=production \
-    PORT=8080
+# Set production environment
+ENV NODE_ENV=production
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/_health || exit 1
-
-# Switch to non-root user
-USER node
-
+# Ensure the port is exposed
 EXPOSE 8080
 
-ENTRYPOINT ["docker-entrypoint.sh"]
+# Use node directly instead of npm for better container signals handling
+CMD ["node", "src/index.js"]

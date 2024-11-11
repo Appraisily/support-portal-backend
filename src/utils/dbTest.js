@@ -1,12 +1,11 @@
 const { Client } = require('pg');
 const logger = require('./logger');
 
-async function checkDatabaseConnection() {
+async function testDatabaseConnection() {
   const {
     DB_NAME,
     DB_USER,
-    DB_PASSWORD,
-    CLOUD_SQL_CONNECTION_NAME
+    DB_PASSWORD
   } = process.env;
 
   logger.info('Starting database connectivity test...');
@@ -16,26 +15,23 @@ async function checkDatabaseConnection() {
   const envCheck = {
     DB_NAME: !!DB_NAME,
     DB_USER: !!DB_USER,
-    DB_PASSWORD: !!DB_PASSWORD,
-    CLOUD_SQL_CONNECTION_NAME: !!CLOUD_SQL_CONNECTION_NAME
+    DB_PASSWORD: !!DB_PASSWORD
   };
   logger.info('Environment variables present:', envCheck);
 
   // 2. Test PostgreSQL connection
   logger.info('2. Testing PostgreSQL connection...');
   const client = new Client({
-    host: `/cloudsql/${CLOUD_SQL_CONNECTION_NAME}`,
+    host: '34.57.184.164',
+    port: 5432,
     database: DB_NAME,
     user: DB_USER,
     password: DB_PASSWORD,
-    ssl: false,
-    dialectOptions: {
-      socketPath: `/cloudsql/${CLOUD_SQL_CONNECTION_NAME}`
-    }
+    ssl: false
   });
 
   try {
-    logger.info('Attempting to connect to database with connection name:', CLOUD_SQL_CONNECTION_NAME);
+    logger.info('Attempting to connect to database...');
     await client.connect();
     logger.info('Successfully connected to database');
 
@@ -51,11 +47,10 @@ async function checkDatabaseConnection() {
       code: error.code,
       message: error.message,
       detail: error.detail,
-      hint: error.hint,
-      connectionName: CLOUD_SQL_CONNECTION_NAME
+      hint: error.hint
     });
     return false;
   }
 }
 
-module.exports = { checkDatabaseConnection };
+module.exports = { testDatabaseConnection };
