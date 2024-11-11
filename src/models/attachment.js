@@ -1,5 +1,23 @@
+const { Model } = require('sequelize');
+
 module.exports = (sequelize, DataTypes) => {
-  const Attachment = sequelize.define('Attachment', {
+  class Attachment extends Model {
+    static associate(models) {
+      Attachment.belongsTo(models.Customer, {
+        foreignKey: 'customerId',
+        as: 'customer'
+      });
+      
+      Attachment.belongsToMany(models.Message, {
+        through: 'MessageAttachments',
+        foreignKey: 'attachmentId',
+        otherKey: 'messageId',
+        as: 'messages'
+      });
+    }
+  }
+
+  Attachment.init({
     id: {
       type: DataTypes.UUID,
       defaultValue: DataTypes.UUIDV4,
@@ -17,26 +35,24 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false
     },
-    gmailAttachmentId: {
+    url: {
       type: DataTypes.STRING,
       allowNull: false
     },
     customerId: {
       type: DataTypes.UUID,
-      allowNull: false
+      allowNull: false,
+      references: {
+        model: 'Customers',
+        key: 'id'
+      }
     }
+  }, {
+    sequelize,
+    modelName: 'Attachment',
+    tableName: 'attachments',
+    timestamps: true
   });
 
-  Attachment.associate = function(models) {
-    Attachment.belongsTo(models.Customer, {
-      foreignKey: 'customerId',
-      as: 'customer'
-    });
-    Attachment.belongsToMany(models.Message, {
-      through: 'MessageAttachment',
-      as: 'messages'
-    });
-  };
-
   return Attachment;
-};
+}

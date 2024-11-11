@@ -16,7 +16,14 @@ module.exports = (sequelize, DataTypes) => {
       Message.belongsTo(models.User, {
         foreignKey: 'userId',
         as: 'author',
-        allowNull: true // Make userId optional
+        allowNull: true
+      });
+
+      Message.belongsToMany(models.Attachment, {
+        through: 'MessageAttachments',
+        foreignKey: 'messageId',
+        otherKey: 'attachmentId',
+        as: 'attachments'
       });
     }
   }
@@ -56,7 +63,7 @@ module.exports = (sequelize, DataTypes) => {
         model: 'Users',
         key: 'id'
       },
-      allowNull: true // Make userId optional
+      allowNull: true
     }
   }, {
     sequelize,
@@ -66,4 +73,4 @@ module.exports = (sequelize, DataTypes) => {
   });
 
   return Message;
-};
+}
