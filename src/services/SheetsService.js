@@ -9,6 +9,7 @@ class SheetsService {
     this.initPromise = null;
     this.salesSpreadsheetId = null;
     this.pendingAppraisalsSpreadsheetId = null;
+    this.auth = null;
   }
 
   async ensureInitialized() {
@@ -41,18 +42,43 @@ class SheetsService {
         throw new Error('Spreadsheet IDs not configured');
       }
 
-      // Initialize sheets API with default credentials (service account)
-      this.sheets = google.sheets({
-        version: 'v4',
-        auth: new google.auth.GoogleAuth({
-          scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly']
-        })
+      // Initialize auth with service account credentials
+      this.auth = new google.auth.GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID
       });
+
+      // Initialize sheets API
+      this.sheets = google.sheets({ 
+        version: 'v4', 
+        auth: this.auth 
+      });
+
+      // Verify access to spreadsheets
+      await this._verifyAccess();
 
       logger.info('Sheets service initialized successfully');
     } catch (error) {
       logger.error('Failed to initialize Sheets service:', error);
       throw error;
+    }
+  }
+
+  async _verifyAccess() {
+    try {
+      // Try to access both spreadsheets to verify permissions
+      await Promise.all([
+        this.sheets.spreadsheets.get({
+          spreadsheetId: this.salesSpreadsheetId,
+          fields: 'spreadsheetId'
+        }),
+        this.sheets.spreadsheets.get({
+          spreadsheetId: this.pendingAppraisalsSpreadsheetId,
+          fields: 'spreadsheetId'
+        })
+      ]);
+    } catch (error) {
+      throw new Error(`Failed to verify spreadsheet access: ${error.message}`);
     }
   }
 
@@ -66,12 +92,19 @@ class SheetsService {
       // Get sales data
       const salesResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.salesSpreadsheetId,
-        range: 'Sales!A2:G' // Assuming headers are in row 1
+        range: 'Sales!A2:G', // Assuming headers are in row 1
+        valueRenderOption: 'UNFORMATTED_VALUE'
+      }).catch(error => {
+        logger.error('Error fetching sales data:', {
+          error: error.message,
+          spreadsheetId: this.salesSpreadsheetId
+        });
+        return { data: { values: [] } };
       });
 
       const salesRows = salesResponse.data.values || [];
       const sales = salesRows
-        .filter(row => row[4]?.toLowerCase() === normalizedEmail) // Column E is Customer email
+        .filter(row => row[4]?.toString().toLowerCase() === normalizedEmail) // Column E is Customer email
         .map(row => ({
           sessionId: row[0],
           chargeId: row[1],
@@ -86,11 +119,17 @@ class SheetsService {
       const pendingResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.pendingAppraisalsSpreadsheetId,
         range: 'Sheet1!A2:D' // Assuming headers are in row 1
+      }).catch(error => {
+        logger.error('Error fetching pending appraisals:', {
+          error: error.message,
+          spreadsheetId: this.pendingAppraisalsSpreadsheetId
+        });
+        return { data: { values: [] } };
       });
 
       const pendingRows = pendingResponse.data.values || [];
       const pendingAppraisals = pendingRows
-        .filter(row => row[1]?.toLowerCase() === normalizedEmail) // Column B is Email
+        .filter(row => row[1]?.toString().toLowerCase() === normalizedEmail) // Column B is Email
         .map(row => ({
           date: row[0],
           type: row[2],
@@ -127,7 +166,19 @@ class SheetsService {
         error: error.message,
         email
       });
-      throw error;
+      // Return empty data structure instead of throwing
+      return {
+        sales: [],
+        pendingAppraisals: [],
+        summary: {
+          totalPurchases: 0,
+          totalSpent: 0,
+          hasPendingAppraisals: false,
+          isExistingCustomer: false,
+          lastPurchaseDate: null,
+          stripeCustomerId: null
+        }
+      };
     }
   }
 }

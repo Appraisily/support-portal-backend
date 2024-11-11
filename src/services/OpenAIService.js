@@ -40,42 +40,72 @@ class OpenAIService {
     logger.info('OpenAI service initialized successfully');
   }
 
-  async generateTicketReply(ticketId, messages) {
+  _formatMessagesForOpenAI(ticket, messages, customerInfo) {
+    const systemPrompt = {
+      role: 'system',
+      content: `You are a helpful customer support agent for Appraisily, a real estate appraisal software company.
+Your task is to generate a professional and empathetic response based on the conversation history.
+
+Key guidelines:
+- Be professional yet friendly
+- Show empathy and understanding
+- Be concise but thorough
+- Address all points raised by the customer
+- Maintain consistency with previous responses
+- Sign off as "Appraisily Support Team"
+
+${customerInfo ? `Customer context:
+- Total purchases: ${customerInfo.summary.totalPurchases}
+- Customer status: ${customerInfo.summary.isExistingCustomer ? 'Existing' : 'New'} customer
+- Has pending appraisals: ${customerInfo.summary.hasPendingAppraisals ? 'Yes' : 'No'}` : ''}
+
+Ticket information:
+- Subject: ${ticket.subject}
+- Category: ${ticket.category}
+- Priority: ${ticket.priority}`
+    };
+
+    const conversationHistory = messages.map(msg => ({
+      role: msg.direction === 'inbound' ? 'user' : 'assistant',
+      content: msg.content
+    }));
+
+    return [systemPrompt, ...conversationHistory];
+  }
+
+  async generateTicketReply(ticket, messages, customerInfo = null) {
     await this.ensureInitialized();
 
     try {
       logger.info('Generating reply with OpenAI', {
-        ticketId,
-        messageCount: messages.length
+        ticketId: ticket.id,
+        messageCount: messages.length,
+        hasCustomerInfo: !!customerInfo
       });
 
-      // Format conversation for OpenAI
-      const formattedMessages = [
-        {
-          role: 'system',
-          content: `You are a helpful customer support agent for Appraisily. 
-          Your task is to generate a professional and empathetic response to the customer's latest message.
-          Keep responses concise but thorough, and maintain a friendly, professional tone.
-          Sign off as "Appraisily Support Team".`
-        },
-        ...messages.map(msg => ({
-          role: msg.direction === 'inbound' ? 'user' : 'assistant',
-          content: msg.content
-        }))
-      ];
+      const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
+
+      logger.info('Formatted messages for OpenAI:', {
+        ticketId: ticket.id,
+        messages: formattedMessages
+      });
 
       const completion = await this.client.chat.completions.create({
         model: 'gpt-4',
         messages: formattedMessages,
         temperature: 0.7,
-        max_tokens: 500
+        max_tokens: 500,
+        presence_penalty: 0.6,
+        frequency_penalty: 0.5
       });
 
       const generatedReply = completion.choices[0].message.content;
 
-      logger.info('Reply generated successfully', {
-        ticketId,
-        replyLength: generatedReply.length
+      logger.info('OpenAI generated reply:', {
+        ticketId: ticket.id,
+        replyLength: generatedReply.length,
+        generatedReply: generatedReply,
+        usage: completion.usage
       });
 
       return {
@@ -85,7 +115,7 @@ class OpenAIService {
 
     } catch (error) {
       logger.error('Error generating reply with OpenAI', {
-        ticketId,
+        ticketId: ticket.id,
         error: error.message,
         stack: error.stack
       });
