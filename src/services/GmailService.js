@@ -45,9 +45,9 @@ class GmailService {
         'https://developers.google.com/oauthplayground'
       );
 
-      // Set the correct scopes for Gmail API
+      // These are the minimum required scopes for reading emails
       const SCOPES = [
-        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://mail.google.com/',
         'https://www.googleapis.com/auth/gmail.modify',
         'https://www.googleapis.com/auth/gmail.labels'
       ];
@@ -78,7 +78,8 @@ class GmailService {
 
       logger.info('Processing webhook data:', {
         emailAddress: decodedData.emailAddress,
-        historyId: decodedData.historyId
+        historyId: decodedData.historyId,
+        rawData: webhookData.message.data
       });
 
       const messagesResponse = await this.gmail.users.messages.list({
@@ -155,7 +156,15 @@ class GmailService {
       const message = await this.gmail.users.messages.get({
         userId: 'me',
         id: messageId,
-        format: 'full'
+        format: 'metadata',
+        metadataHeaders: ['From', 'To', 'Subject', 'Date', 'Message-ID', 'References', 'In-Reply-To']
+      });
+
+      // Get the full message content in a separate call
+      const fullMessage = await this.gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'raw'
       });
 
       const headers = message.data.payload.headers;
@@ -167,7 +176,7 @@ class GmailService {
         to: this.getHeader(headers, 'To'),
         inReplyTo: this.getHeader(headers, 'In-Reply-To'),
         references: this.getHeader(headers, 'References'),
-        content: this.extractContent(message.data.payload)
+        content: Buffer.from(fullMessage.data.raw, 'base64').toString('utf-8')
       };
 
       logger.info('Email data extracted:', {
@@ -183,40 +192,6 @@ class GmailService {
         error: error.message
       });
       return null;
-    }
-  }
-
-  extractContent(payload) {
-    try {
-      if (!payload) return '';
-
-      if (payload.body && payload.body.data) {
-        return Buffer.from(payload.body.data, 'base64').toString('utf-8');
-      }
-
-      if (payload.parts) {
-        let content = '';
-        for (const part of payload.parts) {
-          if (part.mimeType === 'text/plain' && part.body && part.body.data) {
-            content = Buffer.from(part.body.data, 'base64').toString('utf-8');
-            break;
-          }
-          if (part.mimeType === 'text/html' && part.body && part.body.data) {
-            content = Buffer.from(part.body.data, 'base64').toString('utf-8');
-            break;
-          }
-          if (part.parts) {
-            content = this.extractContent(part);
-            if (content) break;
-          }
-        }
-        return content;
-      }
-
-      return '';
-    } catch (error) {
-      logger.error('Error extracting content:', error);
-      return '';
     }
   }
 
