@@ -1,13 +1,14 @@
-const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { google } = require('googleapis');
 const logger = require('../utils/logger');
 const secretManager = require('../utils/secretManager');
 
 class SheetsService {
   constructor() {
-    this.salesSpreadsheet = null;
-    this.pendingAppraisalsSpreadsheet = null;
+    this.sheets = null;
     this.initialized = false;
     this.initPromise = null;
+    this.salesSpreadsheetId = null;
+    this.pendingAppraisalsSpreadsheetId = null;
   }
 
   async ensureInitialized() {
@@ -31,36 +32,22 @@ class SheetsService {
   async _initialize() {
     try {
       // Get spreadsheet IDs from Secret Manager
-      const [salesSpreadsheetId, pendingAppraisalsSpreadsheetId] = await Promise.all([
+      [this.salesSpreadsheetId, this.pendingAppraisalsSpreadsheetId] = await Promise.all([
         secretManager.getSecret('SALES_SPREADSHEET_ID'),
         secretManager.getSecret('PENDING_APPRAISALS_SPREADSHEET_ID')
       ]);
 
-      if (!salesSpreadsheetId || !pendingAppraisalsSpreadsheetId) {
+      if (!this.salesSpreadsheetId || !this.pendingAppraisalsSpreadsheetId) {
         throw new Error('Spreadsheet IDs not configured');
       }
 
-      // Initialize spreadsheets
-      this.salesSpreadsheet = new GoogleSpreadsheet(salesSpreadsheetId);
-      this.pendingAppraisalsSpreadsheet = new GoogleSpreadsheet(pendingAppraisalsSpreadsheetId);
-
-      // Authenticate using the same credentials as Gmail
-      await Promise.all([
-        this.salesSpreadsheet.useServiceAccountAuth({
-          client_email: process.env.GMAIL_CLIENT_ID,
-          private_key: process.env.GMAIL_CLIENT_SECRET,
-        }),
-        this.pendingAppraisalsSpreadsheet.useServiceAccountAuth({
-          client_email: process.env.GMAIL_CLIENT_ID,
-          private_key: process.env.GMAIL_CLIENT_SECRET,
+      // Initialize sheets API with default credentials (service account)
+      this.sheets = google.sheets({
+        version: 'v4',
+        auth: new google.auth.GoogleAuth({
+          scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly']
         })
-      ]);
-
-      // Load spreadsheet info
-      await Promise.all([
-        this.salesSpreadsheet.loadInfo(),
-        this.pendingAppraisalsSpreadsheet.loadInfo()
-      ]);
+      });
 
       logger.info('Sheets service initialized successfully');
     } catch (error) {
@@ -76,43 +63,43 @@ class SheetsService {
       logger.info('Getting customer info from sheets', { email });
       const normalizedEmail = email.toLowerCase();
 
-      // Get sales info from "Sales" sheet
-      const salesSheet = this.salesSpreadsheet.sheetsByTitle['Sales'];
-      if (!salesSheet) {
-        throw new Error('Sales sheet not found');
-      }
+      // Get sales data
+      const salesResponse = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.salesSpreadsheetId,
+        range: 'Sales!A2:G' // Assuming headers are in row 1
+      });
 
-      await salesSheet.loadCells();
-      const salesRows = await salesSheet.getRows();
-      
+      const salesRows = salesResponse.data.values || [];
       const sales = salesRows
-        .filter(row => row.get('Customer email').toLowerCase() === normalizedEmail)
+        .filter(row => row[4]?.toLowerCase() === normalizedEmail) // Column E is Customer email
         .map(row => ({
-          sessionId: row.get('Session ID'),
-          chargeId: row.get('Charge ID'),
-          stripeCustomerId: row.get('Stripe Customer ID'),
-          customerName: row.get('Customer Name'),
-          amount: parseFloat(row.get('Amount') || '0'),
-          date: row.get('Date')
+          sessionId: row[0],
+          chargeId: row[1],
+          stripeCustomerId: row[2],
+          customerName: row[3],
+          amount: parseFloat(row[5] || '0'),
+          date: row[6]
         }))
-        .sort((a, b) => new Date(b.date) - new Date(a.date)); // Most recent first
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
 
       // Get pending appraisals
-      const pendingSheet = this.pendingAppraisalsSpreadsheet.sheetsByIndex[0];
-      await pendingSheet.loadCells();
-      const pendingRows = await pendingSheet.getRows();
-      
+      const pendingResponse = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.pendingAppraisalsSpreadsheetId,
+        range: 'Sheet1!A2:D' // Assuming headers are in row 1
+      });
+
+      const pendingRows = pendingResponse.data.values || [];
       const pendingAppraisals = pendingRows
-        .filter(row => row.get('Email').toLowerCase() === normalizedEmail)
+        .filter(row => row[1]?.toLowerCase() === normalizedEmail) // Column B is Email
         .map(row => ({
-          date: row.get('Date'),
-          type: row.get('Type'),
-          status: row.get('Status')
+          date: row[0],
+          type: row[2],
+          status: row[3]
         }));
 
       // Calculate summary
       const totalSpent = sales.reduce((sum, sale) => sum + sale.amount, 0);
-      const lastPurchase = sales[0]; // Already sorted by date
+      const lastPurchase = sales[0];
       const stripeCustomerId = lastPurchase?.stripeCustomerId;
 
       logger.info('Customer info retrieved', {
