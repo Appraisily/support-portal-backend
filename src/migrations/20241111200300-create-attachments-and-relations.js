@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+<content>const { DataTypes } = require('sequelize');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -34,15 +34,18 @@ module.exports = {
           references: {
             model: 'customers',
             key: 'id'
-          }
+          },
+          onDelete: 'CASCADE'
         },
         createdAt: {
           type: DataTypes.DATE,
-          allowNull: false
+          allowNull: false,
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
         },
         updatedAt: {
           type: DataTypes.DATE,
-          allowNull: false
+          allowNull: false,
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
         }
       }, { transaction });
 
@@ -55,6 +58,7 @@ module.exports = {
             model: 'messages',
             key: 'id'
           },
+          onDelete: 'CASCADE',
           primaryKey: true
         },
         attachmentId: {
@@ -64,15 +68,18 @@ module.exports = {
             model: 'attachments',
             key: 'id'
           },
+          onDelete: 'CASCADE',
           primaryKey: true
         },
         createdAt: {
           type: DataTypes.DATE,
-          allowNull: false
+          allowNull: false,
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
         },
         updatedAt: {
           type: DataTypes.DATE,
-          allowNull: false
+          allowNull: false,
+          defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
         }
       }, { transaction });
 
@@ -102,4 +109,4 @@ module.exports = {
       throw error;
     }
   }
-};
+};</content>
