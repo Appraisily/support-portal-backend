@@ -45,9 +45,16 @@ class GmailService {
         'https://developers.google.com/oauthplayground'
       );
 
+      // Set the correct scopes for Gmail API
+      const SCOPES = [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.modify',
+        'https://www.googleapis.com/auth/gmail.labels'
+      ];
+
       this.oauth2Client.setCredentials({
         refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-        scope: 'https://mail.google.com/'
+        scope: SCOPES.join(' ')
       });
 
       this.gmail = google.gmail({
@@ -71,8 +78,7 @@ class GmailService {
 
       logger.info('Processing webhook data:', {
         emailAddress: decodedData.emailAddress,
-        historyId: decodedData.historyId,
-        rawData: webhookData.message.data
+        historyId: decodedData.historyId
       });
 
       const messagesResponse = await this.gmail.users.messages.list({
@@ -103,32 +109,15 @@ class GmailService {
           
           const emailData = await this.getEmailData(messageData.id);
           if (emailData) {
-            logger.debug('Email data retrieved:', {
-              messageId: messageData.id,
-              subject: emailData.subject,
-              from: emailData.from,
-              hasContent: !!emailData.content
-            });
-
             messages.push(emailData);
             
             const existingTicket = await this.findExistingTicket(emailData.threadId);
             if (!existingTicket) {
-              logger.debug('Creating new ticket for thread:', {
-                threadId: emailData.threadId,
-                subject: emailData.subject
-              });
-
               const ticket = await this.createOrUpdateTicket(emailData);
               if (ticket) {
                 tickets.push(ticket);
-                logger.info('Created new ticket:', { 
-                  ticketId: ticket.id,
-                  messageId: messageData.id,
-                  subject: ticket.subject,
-                  status: ticket.status
-                });
-
+                
+                // Mark message as read
                 await this.gmail.users.messages.modify({
                   userId: 'me',
                   id: messageData.id,
@@ -136,40 +125,16 @@ class GmailService {
                     removeLabelIds: ['UNREAD']
                   }
                 });
-              } else {
-                logger.warn('Failed to create ticket:', {
-                  messageId: messageData.id,
-                  threadId: emailData.threadId
-                });
               }
-            } else {
-              logger.info('Ticket already exists:', {
-                ticketId: existingTicket.id,
-                messageId: messageData.id,
-                status: existingTicket.status
-              });
             }
-          } else {
-            logger.warn('Failed to get email data:', {
-              messageId: messageData.id,
-              threadId: messageData.threadId
-            });
           }
         } catch (error) {
-          logger.error('Error processing individual message:', {
+          logger.error('Error processing message:', {
             messageId: messageData.id,
-            error: error.message,
-            stack: error.stack
+            error: error.message
           });
         }
       }
-
-      logger.info('Webhook processing completed', {
-        processed: messages.length,
-        messages: messages.length,
-        tickets: tickets.length,
-        processingTime: Date.now() - new Date(webhookData.message.publishTime).getTime()
-      });
 
       return {
         processed: messages.length,
@@ -179,46 +144,18 @@ class GmailService {
     } catch (error) {
       logger.error('Error processing webhook:', {
         error: error.message,
-        stack: error.stack,
-        webhookData: JSON.stringify(webhookData)
+        stack: error.stack
       });
       throw error;
     }
   }
 
-  async findExistingTicket(threadId) {
-    try {
-      const models = await getModels();
-      const ticket = await models.Ticket.findOne({
-        where: { gmailThreadId: threadId }
-      });
-
-      logger.debug('Searching for existing ticket:', {
-        threadId,
-        found: !!ticket,
-        ticketId: ticket?.id
-      });
-
-      return ticket;
-    } catch (error) {
-      logger.error('Error finding existing ticket:', {
-        threadId,
-        error: error.message,
-        stack: error.stack
-      });
-      return null;
-    }
-  }
-
   async getEmailData(messageId) {
     try {
-      logger.debug('Fetching email data:', { messageId });
-
       const message = await this.gmail.users.messages.get({
         userId: 'me',
         id: messageId,
-        format: 'metadata',
-        metadataHeaders: ['From', 'To', 'Subject', 'Date', 'Message-ID', 'References', 'In-Reply-To']
+        format: 'full'
       });
 
       const headers = message.data.payload.headers;
@@ -229,30 +166,21 @@ class GmailService {
         from: this.getHeader(headers, 'From'),
         to: this.getHeader(headers, 'To'),
         inReplyTo: this.getHeader(headers, 'In-Reply-To'),
-        references: this.getHeader(headers, 'References')
+        references: this.getHeader(headers, 'References'),
+        content: this.extractContent(message.data.payload)
       };
-
-      // Get full message content in a separate call
-      const fullMessage = await this.gmail.users.messages.get({
-        userId: 'me',
-        id: messageId
-      });
-
-      emailData.content = this.extractContent(fullMessage.data.payload);
 
       logger.info('Email data extracted:', {
         messageId: emailData.messageId,
         subject: emailData.subject,
-        from: emailData.from,
-        contentLength: emailData.content?.length || 0
+        from: emailData.from
       });
 
       return emailData;
     } catch (error) {
       logger.error('Error getting email data:', {
         messageId,
-        error: error.message,
-        stack: error.stack
+        error: error.message
       });
       return null;
     }
@@ -260,30 +188,29 @@ class GmailService {
 
   extractContent(payload) {
     try {
+      if (!payload) return '';
+
       if (payload.body && payload.body.data) {
         return Buffer.from(payload.body.data, 'base64').toString('utf-8');
       }
 
       if (payload.parts) {
-        // First try to find text/plain part
-        let textPart = payload.parts.find(part => part.mimeType === 'text/plain');
-        
-        // If no text/plain, try text/html
-        if (!textPart) {
-          textPart = payload.parts.find(part => part.mimeType === 'text/html');
-        }
-
-        if (textPart && textPart.body && textPart.body.data) {
-          return Buffer.from(textPart.body.data, 'base64').toString('utf-8');
-        }
-
-        // If still no content, try recursive search in parts
+        let content = '';
         for (const part of payload.parts) {
+          if (part.mimeType === 'text/plain' && part.body && part.body.data) {
+            content = Buffer.from(part.body.data, 'base64').toString('utf-8');
+            break;
+          }
+          if (part.mimeType === 'text/html' && part.body && part.body.data) {
+            content = Buffer.from(part.body.data, 'base64').toString('utf-8');
+            break;
+          }
           if (part.parts) {
-            const content = this.extractContent(part);
-            if (content) return content;
+            content = this.extractContent(part);
+            if (content) break;
           }
         }
+        return content;
       }
 
       return '';
@@ -302,50 +229,21 @@ class GmailService {
       const email = emailMatch[1].toLowerCase();
       const name = emailData.from.split('<')[0].trim() || email.split('@')[0];
 
-      logger.info('Processing email for ticket:', {
-        email,
-        subject: emailData.subject,
-        threadId: emailData.threadId,
-        messageId: emailData.messageId
-      });
-
-      logger.debug('Creating/finding customer:', { email, name });
       const [customer] = await Customer.findOrCreate({
         where: { email },
         defaults: { name, email }
       });
 
-      logger.info('Customer found/created:', {
-        customerId: customer.id,
-        email: customer.email,
-        name: customer.name,
-        isNew: customer.isNewRecord
-      });
-
       let ticket = await Ticket.findOne({
-        where: {
-          gmailThreadId: emailData.threadId
-        }
+        where: { gmailThreadId: emailData.threadId }
       });
 
       if (ticket) {
-        logger.info('Updating existing ticket:', {
-          ticketId: ticket.id,
-          threadId: emailData.threadId,
-          oldStatus: ticket.status
-        });
-
         await ticket.update({
           status: 'open',
           lastMessageAt: new Date()
         });
       } else {
-        logger.info('Creating new ticket from email:', {
-          threadId: emailData.threadId,
-          customerId: customer.id,
-          subject: emailData.subject
-        });
-
         ticket = await Ticket.create({
           subject: emailData.subject,
           status: 'open',
@@ -356,35 +254,35 @@ class GmailService {
           gmailMessageId: emailData.messageId,
           lastMessageAt: new Date()
         });
-
-        logger.debug('New ticket created:', {
-          ticketId: ticket.id,
-          status: ticket.status,
-          threadId: ticket.gmailThreadId
-        });
       }
 
-      const message = await Message.create({
+      await Message.create({
         ticketId: ticket.id,
         content: emailData.content,
         direction: 'inbound',
         customerId: customer.id
       });
 
-      logger.info('Message created:', {
-        messageId: message.id,
-        ticketId: ticket.id,
-        direction: message.direction,
-        contentLength: message.content.length
-      });
-
       return ticket;
     } catch (error) {
       logger.error('Error creating/updating ticket:', {
         error: error.message,
-        stack: error.stack,
-        threadId: emailData.threadId,
-        subject: emailData.subject
+        threadId: emailData.threadId
+      });
+      return null;
+    }
+  }
+
+  async findExistingTicket(threadId) {
+    try {
+      const models = await getModels();
+      return await models.Ticket.findOne({
+        where: { gmailThreadId: threadId }
+      });
+    } catch (error) {
+      logger.error('Error finding ticket:', {
+        threadId,
+        error: error.message
       });
       return null;
     }
@@ -428,24 +326,6 @@ class GmailService {
       return response.data;
     } catch (error) {
       logger.error('Failed to setup Gmail watch:', error);
-      throw error;
-    }
-  }
-
-  async getWatchStatus() {
-    try {
-      const response = await this.gmail.users.getProfile({
-        userId: 'me'
-      });
-      
-      return {
-        emailAddress: response.data.emailAddress,
-        messagesTotal: response.data.messagesTotal,
-        threadsTotal: response.data.threadsTotal,
-        historyId: response.data.historyId
-      };
-    } catch (error) {
-      logger.error('Error getting Gmail watch status:', error);
       throw error;
     }
   }
