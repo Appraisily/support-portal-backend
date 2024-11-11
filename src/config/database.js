@@ -76,6 +76,8 @@ const initializeDatabase = async () => {
     if (process.env.NODE_ENV === 'production') {
       logger.info('Running database migrations...');
       const { Umzug, SequelizeStorage } = require('umzug');
+      
+      // Configure Umzug with error handling
       const umzug = new Umzug({
         migrations: { 
           glob: path.join(__dirname, '../migrations/*.js'),
@@ -83,7 +85,18 @@ const initializeDatabase = async () => {
             const migration = require(migrationPath);
             return {
               name,
-              up: async (params) => migration.up(params.context, params.context.sequelize),
+              up: async (params) => {
+                try {
+                  return await migration.up(params.context, params.context.sequelize);
+                } catch (error) {
+                  // Log migration error but don't fail if it's because things already exist
+                  if (error.message.includes('already exists')) {
+                    logger.warn(`Migration ${name} skipped - objects already exist`);
+                    return Promise.resolve();
+                  }
+                  throw error;
+                }
+              },
               down: async (params) => migration.down(params.context, params.context.sequelize)
             };
           }
@@ -93,8 +106,20 @@ const initializeDatabase = async () => {
         logger: console
       });
 
-      await umzug.up();
-      logger.info('Database migrations completed successfully');
+      try {
+        await umzug.up();
+        logger.info('Database migrations completed successfully');
+      } catch (error) {
+        // Log migration error but continue if it's not critical
+        logger.error('Migration error:', {
+          error: error.message,
+          stack: error.stack
+        });
+        
+        if (!error.message.includes('already exists')) {
+          throw error;
+        }
+      }
     }
 
     return sequelize;
