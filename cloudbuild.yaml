@@ -43,7 +43,8 @@ steps:
         DB_NAME=DB_NAME:latest,
         DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
-        JWT_SECRET=jwt-secret:latest
+        JWT_SECRET=jwt-secret:latest,
+        OPENAI_API_KEY=OPENAI_API_KEY:latest
 
 images:
   - 'gcr.io/$PROJECT_ID/support-portal-backend'

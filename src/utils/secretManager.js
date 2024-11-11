@@ -1,25 +1,6 @@
 const { SecretManagerServiceClient } = require('@google-cloud/secret-manager');
 const logger = require('./logger');
 
-/*
-IMPORTANTE: Secret Manager es el primer servicio que debe inicializarse
-
-Razones:
-1. Otros servicios dependen de estos secretos
-2. Sin secretos, la aplicación no puede:
-   - Conectar a la base de datos
-   - Autenticar con Gmail
-   - Validar tokens JWT
-   - Verificar credenciales de admin
-
-Orden de carga de secretos:
-1. Secretos de base de datos (DB_*)
-2. Secretos de autenticación (jwt-secret, ADMIN_*)
-3. Secretos de servicios externos (GMAIL_*)
-
-Si hay un error aquí, toda la aplicación debe fallar rápido y claramente.
-*/
-
 class SecretManager {
   constructor() {
     this.client = new SecretManagerServiceClient();
@@ -46,14 +27,8 @@ class SecretManager {
     if (this.initialized) return;
     
     try {
-      // ¡IMPORTANTE! No eliminar ningún secreto sin revisar todas las dependencias
-      // Estos secretos son utilizados por:
-      // - DB_* -> Conexión a base de datos
-      // - GMAIL_* -> Autenticación con Gmail API
-      // - ADMIN_* -> Autenticación de administrador
-      // - jwt-secret -> Generación de tokens de sesión (¡OJO! el nombre en Secret Manager es "jwt-secret" en minúsculas con guion!)
       const requiredSecrets = [
-        // Secretos para base de datos
+        // Database secrets
         'DB_USER',
         'DB_PASSWORD',
         'DB_NAME',
@@ -61,20 +36,23 @@ class SecretManager {
         'DB_PORT',
         'CLOUD_SQL_CONNECTION_NAME',
         
-        // Secretos para Gmail API
+        // Gmail API secrets
         'GMAIL_CLIENT_ID',
         'GMAIL_CLIENT_SECRET',
         'GMAIL_REFRESH_TOKEN',
         
-        // Secretos para autenticación de admin
-        'ADMIN_EMAIL',    // Usado en authController.login
-        'ADMIN_PASSWORD', // Usado en authController.login
+        // Admin authentication secrets
+        'ADMIN_EMAIL',
+        'ADMIN_PASSWORD',
         
-        // Secreto para JWT
+        // JWT secret
         {
-          secretName: 'jwt-secret',  // ¡IMPORTANTE! Este es el nombre exacto en Secret Manager
-          envVar: 'JWT_SECRET'       // Este es el nombre que usamos en el código
-        }
+          secretName: 'jwt-secret',
+          envVar: 'JWT_SECRET'
+        },
+
+        // OpenAI API key
+        'OPENAI_API_KEY'
       ];
 
       for (const secret of requiredSecrets) {

@@ -215,13 +215,13 @@ class TicketService {
       }
       
       const ticket = await this.models.Ticket.create(data);
-      logger.info('Ticket created successfully', { ticketId: ticket.id });
       
       // Map status back for response
       if (ticket.status === 'open') {
         ticket.status = 'pending';
       }
       
+      logger.info('Ticket created successfully', { ticketId: ticket.id });
       return ticket;
     } catch (error) {
       logger.error('Error creating ticket:', {
@@ -256,8 +256,6 @@ class TicketService {
       logger.info('Ticket updated successfully', { ticketId: id });
       return ticket;
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      
       logger.error('Error updating ticket:', {
         error: error.message,
         ticketId: id,
@@ -309,10 +307,14 @@ class TicketService {
       });
 
       logger.info('Reply added successfully', {
-        ticketId,
         messageId: reply.id,
-        direction: data.direction
+        direction: data.direction,
+        ticketId
       });
+      
+      if (error instanceof ApiError) {
+        throw error;
+      }
 
       return reply;
     } catch (error) {
@@ -321,10 +323,6 @@ class TicketService {
         ticketId,
         data
       });
-      
-      if (error instanceof ApiError) {
-        throw error;
-      }
       throw new ApiError(500, 'Error adding reply');
     }
   }
