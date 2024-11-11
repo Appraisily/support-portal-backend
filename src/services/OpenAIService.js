@@ -41,6 +41,7 @@ class OpenAIService {
   }
 
   _formatMessagesForOpenAI(ticket, messages, customerInfo) {
+    // Create system prompt with context
     const systemPrompt = {
       role: 'system',
       content: `You are a helpful customer support agent for Appraisily, a real estate appraisal software company.
@@ -65,12 +66,28 @@ Ticket information:
 - Priority: ${ticket.priority}`
     };
 
-    const conversationHistory = messages.map(msg => ({
-      role: msg.direction === 'inbound' ? 'user' : 'assistant',
-      content: msg.content
-    }));
+    // Filter and format conversation messages
+    const validMessages = messages
+      .filter(msg => {
+        // Remove empty or test messages
+        const content = msg.content?.trim();
+        if (!content) return false;
+        if (content.length < 3) return false;
+        if (['test', 'ok', 'ss', 'sa', 'aa'].includes(content.toLowerCase())) return false;
+        return true;
+      })
+      .map(msg => ({
+        role: msg.direction === 'inbound' ? 'user' : 'assistant',
+        content: msg.content.trim()
+      }));
 
-    return [systemPrompt, ...conversationHistory];
+    logger.debug('Filtered conversation messages', {
+      originalCount: messages.length,
+      filteredCount: validMessages.length,
+      messages: validMessages
+    });
+
+    return [systemPrompt, ...validMessages];
   }
 
   async generateTicketReply(ticket, messages, customerInfo = null) {
@@ -87,7 +104,8 @@ Ticket information:
 
       logger.info('Formatted messages for OpenAI:', {
         ticketId: ticket.id,
-        messages: formattedMessages
+        messageCount: formattedMessages.length,
+        systemPrompt: formattedMessages[0].content
       });
 
       const completion = await this.client.chat.completions.create({
@@ -104,7 +122,7 @@ Ticket information:
       logger.info('OpenAI generated reply:', {
         ticketId: ticket.id,
         replyLength: generatedReply.length,
-        generatedReply: generatedReply,
+        generatedReply,
         usage: completion.usage
       });
 

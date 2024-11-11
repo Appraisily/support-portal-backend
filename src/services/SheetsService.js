@@ -5,11 +5,11 @@ const secretManager = require('../utils/secretManager');
 class SheetsService {
   constructor() {
     this.sheets = null;
+    this.auth = null;
     this.initialized = false;
     this.initPromise = null;
     this.salesSpreadsheetId = null;
     this.pendingAppraisalsSpreadsheetId = null;
-    this.auth = null;
   }
 
   async ensureInitialized() {
@@ -26,7 +26,8 @@ class SheetsService {
         error: error.message,
         stack: error.stack
       });
-      throw error;
+      // Don't throw, allow service to continue with limited functionality
+      this.initialized = true;
     }
   }
 
@@ -39,7 +40,8 @@ class SheetsService {
       ]);
 
       if (!this.salesSpreadsheetId || !this.pendingAppraisalsSpreadsheetId) {
-        throw new Error('Spreadsheet IDs not configured');
+        logger.error('Missing spreadsheet IDs');
+        return;
       }
 
       // Initialize auth with service account credentials
@@ -57,9 +59,16 @@ class SheetsService {
       // Verify access to spreadsheets
       await this._verifyAccess();
 
-      logger.info('Sheets service initialized successfully');
+      logger.info('Sheets service initialized successfully', {
+        salesSpreadsheetId: this.salesSpreadsheetId,
+        pendingAppraisalsSpreadsheetId: this.pendingAppraisalsSpreadsheetId
+      });
     } catch (error) {
-      logger.error('Failed to initialize Sheets service:', error);
+      logger.error('Failed to initialize Sheets service:', {
+        error: error.message,
+        stack: error.stack,
+        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID
+      });
       throw error;
     }
   }
@@ -67,32 +76,54 @@ class SheetsService {
   async _verifyAccess() {
     try {
       // Try to access both spreadsheets to verify permissions
-      await Promise.all([
+      const [salesResponse, pendingResponse] = await Promise.allSettled([
         this.sheets.spreadsheets.get({
           spreadsheetId: this.salesSpreadsheetId,
-          fields: 'spreadsheetId'
+          fields: 'spreadsheetId,properties.title'
         }),
         this.sheets.spreadsheets.get({
           spreadsheetId: this.pendingAppraisalsSpreadsheetId,
-          fields: 'spreadsheetId'
+          fields: 'spreadsheetId,properties.title'
         })
       ]);
+
+      // Log access verification results
+      logger.info('Spreadsheet access verification:', {
+        sales: salesResponse.status === 'fulfilled' ? 'success' : 'failed',
+        pending: pendingResponse.status === 'fulfilled' ? 'success' : 'failed',
+        salesError: salesResponse.status === 'rejected' ? salesResponse.reason.message : null,
+        pendingError: pendingResponse.status === 'rejected' ? pendingResponse.reason.message : null
+      });
+
+      if (salesResponse.status === 'rejected' || pendingResponse.status === 'rejected') {
+        throw new Error('Failed to verify access to one or more spreadsheets');
+      }
     } catch (error) {
-      throw new Error(`Failed to verify spreadsheet access: ${error.message}`);
+      logger.error('Spreadsheet access verification failed:', {
+        error: error.message,
+        salesSpreadsheetId: this.salesSpreadsheetId,
+        pendingAppraisalsSpreadsheetId: this.pendingAppraisalsSpreadsheetId
+      });
+      throw error;
     }
   }
 
   async getCustomerInfo(email) {
-    await this.ensureInitialized();
-
     try {
-      logger.info('Getting customer info from sheets', { email });
+      await this.ensureInitialized();
+      
+      if (!this.sheets) {
+        logger.warn('Sheets service not properly initialized, returning empty data');
+        return this._getEmptyCustomerData();
+      }
+
       const normalizedEmail = email.toLowerCase();
+      logger.info('Getting customer info from sheets', { email });
 
       // Get sales data
       const salesResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.salesSpreadsheetId,
-        range: 'Sales!A2:G', // Assuming headers are in row 1
+        range: 'Sales!A2:G',
         valueRenderOption: 'UNFORMATTED_VALUE'
       }).catch(error => {
         logger.error('Error fetching sales data:', {
@@ -104,7 +135,7 @@ class SheetsService {
 
       const salesRows = salesResponse.data.values || [];
       const sales = salesRows
-        .filter(row => row[4]?.toString().toLowerCase() === normalizedEmail) // Column E is Customer email
+        .filter(row => row[4]?.toString().toLowerCase() === normalizedEmail)
         .map(row => ({
           sessionId: row[0],
           chargeId: row[1],
@@ -118,7 +149,7 @@ class SheetsService {
       // Get pending appraisals
       const pendingResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.pendingAppraisalsSpreadsheetId,
-        range: 'Sheet1!A2:D' // Assuming headers are in row 1
+        range: 'Sheet1!A2:D'
       }).catch(error => {
         logger.error('Error fetching pending appraisals:', {
           error: error.message,
@@ -129,7 +160,7 @@ class SheetsService {
 
       const pendingRows = pendingResponse.data.values || [];
       const pendingAppraisals = pendingRows
-        .filter(row => row[1]?.toString().toLowerCase() === normalizedEmail) // Column B is Email
+        .filter(row => row[1]?.toString().toLowerCase() === normalizedEmail)
         .map(row => ({
           date: row[0],
           type: row[2],
@@ -141,45 +172,46 @@ class SheetsService {
       const lastPurchase = sales[0];
       const stripeCustomerId = lastPurchase?.stripeCustomerId;
 
-      logger.info('Customer info retrieved', {
+      const summary = {
+        totalPurchases: sales.length,
+        totalSpent,
+        hasPendingAppraisals: pendingAppraisals.length > 0,
+        isExistingCustomer: sales.length > 0,
+        lastPurchaseDate: lastPurchase?.date || null,
+        stripeCustomerId: stripeCustomerId || null
+      };
+
+      logger.info('Customer info retrieved successfully', {
         email,
         salesCount: sales.length,
         pendingAppraisalsCount: pendingAppraisals.length,
         totalSpent
       });
 
-      return {
-        sales,
-        pendingAppraisals,
-        summary: {
-          totalPurchases: sales.length,
-          totalSpent,
-          hasPendingAppraisals: pendingAppraisals.length > 0,
-          isExistingCustomer: sales.length > 0,
-          lastPurchaseDate: lastPurchase?.date || null,
-          stripeCustomerId: stripeCustomerId || null
-        }
-      };
+      return { sales, pendingAppraisals, summary };
 
     } catch (error) {
       logger.error('Error getting customer info from sheets:', {
         error: error.message,
         email
       });
-      // Return empty data structure instead of throwing
-      return {
-        sales: [],
-        pendingAppraisals: [],
-        summary: {
-          totalPurchases: 0,
-          totalSpent: 0,
-          hasPendingAppraisals: false,
-          isExistingCustomer: false,
-          lastPurchaseDate: null,
-          stripeCustomerId: null
-        }
-      };
+      return this._getEmptyCustomerData();
     }
+  }
+
+  _getEmptyCustomerData() {
+    return {
+      sales: [],
+      pendingAppraisals: [],
+      summary: {
+        totalPurchases: 0,
+        totalSpent: 0,
+        hasPendingAppraisals: false,
+        isExistingCustomer: false,
+        lastPurchaseDate: null,
+        stripeCustomerId: null
+      }
+    };
   }
 }
 
