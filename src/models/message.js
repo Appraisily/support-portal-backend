@@ -15,7 +15,8 @@ module.exports = (sequelize, DataTypes) => {
 
       Message.belongsTo(models.User, {
         foreignKey: 'userId',
-        as: 'author'
+        as: 'author',
+        allowNull: true // Make userId optional
       });
     }
   }
@@ -54,7 +55,8 @@ module.exports = (sequelize, DataTypes) => {
       references: {
         model: 'Users',
         key: 'id'
-      }
+      },
+      allowNull: true // Make userId optional
     }
   }, {
     sequelize,

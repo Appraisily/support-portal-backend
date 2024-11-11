@@ -65,11 +65,10 @@ exports.updateTicket = async (req, res, next) => {
 
 exports.replyToTicket = async (req, res, next) => {
   try {
-    // Use the default admin UUID since we're using a simplified auth system
     const reply = await ticketService.addReply(req.params.id, {
       content: req.body.content,
       direction: req.body.direction || 'outbound',
-      userId: '00000000-0000-0000-0000-000000000000', // Default admin UUID
+      userId: null, // Make userId optional since we're using a simplified auth system
       attachments: req.body.attachments
     });
     

@@ -105,7 +105,7 @@ class TicketService {
         tickets: tickets.map(ticket => ({
           id: ticket.id,
           subject: ticket.subject,
-          status: ticket.status === 'open' ? 'pending' : ticket.status, // Map back to frontend status
+          status: ticket.status === 'open' ? 'pending' : ticket.status,
           priority: ticket.priority,
           category: ticket.category,
           customer: ticket.customer ? {
@@ -173,8 +173,6 @@ class TicketService {
 
       return ticket;
     } catch (error) {
-      if (error instanceof ApiError) throw error;
-      
       logger.error('Error retrieving ticket:', {
         error: error.message,
         ticketId: id
@@ -288,7 +286,12 @@ class TicketService {
         ticketId,
         content: data.content,
         direction: data.direction,
-        userId: data.userId
+        userId: data.userId // This can be null
+      });
+
+      // Update ticket's last message timestamp
+      await ticket.update({
+        lastMessageAt: new Date()
       });
 
       // Handle attachments if present
@@ -301,23 +304,18 @@ class TicketService {
         );
       }
 
-      // Update ticket's last message timestamp
-      await ticket.update({
-        lastMessageAt: new Date()
-      });
-
       logger.info('Reply added successfully', {
         messageId: reply.id,
         direction: data.direction,
         ticketId
       });
-      
-      if (error instanceof ApiError) {
-        throw error;
-      }
 
       return reply;
     } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
       logger.error('Error adding reply:', {
         error: error.message,
         ticketId,
