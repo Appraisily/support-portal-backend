@@ -2,6 +2,7 @@ const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
 const secretManager = require('../utils/secretManager');
 const models = require('../models');
+const path = require('path');
 
 let sequelize = null;
 let config = null;
@@ -77,13 +78,13 @@ const initializeDatabase = async () => {
       const { Umzug, SequelizeStorage } = require('umzug');
       const umzug = new Umzug({
         migrations: { 
-          glob: 'src/migrations/*.js',
-          resolve: ({ name, path, context }) => {
-            const migration = require(path);
+          glob: path.join(__dirname, '../migrations/*.js'),
+          resolve: ({ name, path: migrationPath }) => {
+            const migration = require(migrationPath);
             return {
               name,
-              up: async () => migration.up(context, Sequelize),
-              down: async () => migration.down(context, Sequelize)
+              up: async (params) => migration.up(params.context, params.context.sequelize),
+              down: async (params) => migration.down(params.context, params.context.sequelize)
             };
           }
         },
