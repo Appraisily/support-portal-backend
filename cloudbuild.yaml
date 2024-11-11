@@ -7,18 +7,6 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/support-portal-backend']
   
-  # Run database migrations
-  - name: 'gcr.io/$PROJECT_ID/support-portal-backend'
-    entrypoint: 'node'
-    args: ['node_modules/.bin/sequelize-cli', 'db:migrate']
-    env:
-      - 'NODE_ENV=production'
-      - 'DB_HOST=/cloudsql/${_CLOUD_SQL_CONNECTION_NAME}'
-      - 'DB_NAME=${_DB_NAME}'
-      - 'DB_USER=${_DB_USER}'
-      - 'DB_PASSWORD=${_DB_PASSWORD}'
-      - 'CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME}'
-  
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
@@ -48,12 +36,15 @@ steps:
       - '--add-cloudsql-instances'
       - '${_CLOUD_SQL_CONNECTION_NAME}'
       - '--set-env-vars'
-      - 'NODE_ENV=production,GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME}'
+      - >-
+        NODE_ENV=production,
+        GOOGLE_CLOUD_PROJECT_ID=$PROJECT_ID,
+        CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME},
+        DB_HOST=/cloudsql/${_CLOUD_SQL_CONNECTION_NAME},
+        DB_NAME=${_DB_NAME},
+        DB_USER=${_DB_USER}
       - '--set-secrets'
       - >-
-        DB_HOST=DB_HOST:latest,
-        DB_NAME=DB_NAME:latest,
-        DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
         JWT_SECRET=jwt-secret:latest,
         OPENAI_API_KEY=OPENAI_API_KEY:latest,

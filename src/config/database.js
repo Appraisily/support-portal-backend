@@ -1,22 +1,10 @@
 const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
-const path = require('path');
 const secretManager = require('../utils/secretManager');
 const models = require('../models');
 
 let sequelize = null;
 let config = null;
-
-const waitForSecrets = async (retries = 30, delay = 1000) => {
-  for (let i = 0; i < retries; i++) {
-    if (process.env.DB_USER && process.env.DB_PASSWORD && process.env.DB_NAME) {
-      return true;
-    }
-    logger.info('Waiting for database secrets...');
-    await new Promise(resolve => setTimeout(resolve, delay));
-  }
-  throw new Error('Timeout waiting for database secrets');
-};
 
 const initializeDatabase = async () => {
   if (sequelize) {
@@ -24,60 +12,50 @@ const initializeDatabase = async () => {
   }
 
   try {
-    // 1. First ensure secrets are loaded and wait if necessary
+    // 1. Ensure secrets are loaded
     logger.info('Loading database secrets...');
-    await secretManager.ensureInitialized();
-    await waitForSecrets();
+    const secretsLoaded = await secretManager.ensureInitialized();
     
-    // 2. Configure database connection
+    if (!secretsLoaded) {
+      throw new Error('Failed to load required secrets');
+    }
+
+    // 2. Verify required environment variables
+    const requiredEnvVars = ['DB_USER', 'DB_PASSWORD', 'DB_NAME', 'DB_HOST'];
+    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+    }
+
+    // 3. Configure database connection
     config = {
       dialect: 'postgres',
+      host: process.env.DB_HOST,
+      database: process.env.DB_NAME,
+      username: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
       logging: (msg) => logger.debug('Sequelize:', { query: msg }),
       pool: {
         max: 5,
         min: 0,
         acquire: 30000,
         idle: 10000
-      },
-      retry: {
-        max: 5,
-        match: [
-          /SequelizeConnectionError/,
-          /SequelizeConnectionRefusedError/,
-          /SequelizeHostNotFoundError/,
-          /SequelizeHostNotReachableError/,
-          /SequelizeInvalidConnectionError/,
-          /SequelizeConnectionTimedOutError/
-        ],
-        backoffBase: 1000,
-        backoffExponent: 1.5
       }
     };
 
-    // 3. Configure connection based on environment
+    // 4. Add production-specific configuration
     if (process.env.NODE_ENV === 'production') {
       const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
-      config.host = connectionName ?
-        `/cloudsql/${connectionName}` :
-        process.env.DB_HOST;
+      if (!connectionName) {
+        throw new Error('Missing CLOUD_SQL_CONNECTION_NAME in production');
+      }
+
       config.dialectOptions = {
-        socketPath: connectionName ?
-          `/cloudsql/${connectionName}` :
-          undefined,
-        ssl: false
-      };
-    } else {
-      config.host = process.env.DB_HOST;
-      config.port = process.env.DB_PORT;
-      config.dialectOptions = {
+        socketPath: `/cloudsql/${connectionName}`,
         ssl: false
       };
     }
-
-    // 4. Set credentials from environment (loaded from secrets)
-    config.database = process.env.DB_NAME;
-    config.username = process.env.DB_USER;
-    config.password = process.env.DB_PASSWORD;
 
     logger.info('Initializing database connection...', {
       host: config.host,
@@ -86,12 +64,14 @@ const initializeDatabase = async () => {
       environment: process.env.NODE_ENV
     });
 
-    // 5. Create Sequelize instance and test connection
+    // 5. Create Sequelize instance
     sequelize = new Sequelize(config);
+
+    // 6. Test connection
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
 
-    // 6. Initialize models
+    // 7. Initialize models
     await models.initialize(sequelize);
     logger.info('Models initialized successfully');
 
@@ -100,9 +80,11 @@ const initializeDatabase = async () => {
     logger.error('Database initialization failed:', {
       error: error.message,
       stack: error.stack,
-      host: config?.host,
-      database: config?.database,
-      environment: process.env.NODE_ENV
+      config: {
+        host: config?.host,
+        database: config?.database,
+        environment: process.env.NODE_ENV
+      }
     });
     throw error;
   }

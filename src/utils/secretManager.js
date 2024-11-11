@@ -7,80 +7,69 @@ class SecretManager {
     this.secrets = new Map();
     this.initialized = false;
     this.initPromise = null;
+    this.requiredSecrets = [
+      'DB_PASSWORD',
+      'JWT_SECRET',
+      'OPENAI_API_KEY',
+      'SALES_SPREADSHEET_ID',
+      'PENDING_APPRAISALS_SPREADSHEET_ID',
+      'COMPLETED_APPRAISALS_SPREADSHEET_ID'
+    ];
   }
 
   async ensureInitialized() {
-    if (this.initialized) return;
+    if (this.initialized) return true;
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = this.loadSecrets();
-    await this.initPromise;
-    this.initialized = true;
+    const result = await this.initPromise;
+    this.initialized = result;
+    return result;
   }
 
   async getSecret(name) {
-    await this.ensureInitialized();
-    return this.secrets.get(name);
+    if (!this.initialized) {
+      await this.ensureInitialized();
+    }
+    return this.secrets.get(name) || process.env[name];
   }
 
   async loadSecrets() {
-    if (this.initialized) return;
+    if (this.initialized) return true;
     
     try {
-      const requiredSecrets = [
-        // Database secrets
-        'DB_USER',
-        'DB_PASSWORD',
-        'DB_NAME',
-        'DB_HOST',
-        'DB_PORT',
-        'CLOUD_SQL_CONNECTION_NAME',
-        
-        // Gmail API secrets
-        'GMAIL_CLIENT_ID',
-        'GMAIL_CLIENT_SECRET',
-        'GMAIL_REFRESH_TOKEN',
-        
-        // Admin authentication secrets
-        'ADMIN_EMAIL',
-        'ADMIN_PASSWORD',
-        
-        // JWT secret
-        {
-          secretName: 'jwt-secret',
-          envVar: 'JWT_SECRET'
-        },
-
-        // OpenAI API key
-        'OPENAI_API_KEY',
-
-        // Google Sheets IDs
-        'SALES_SPREADSHEET_ID',
-        'PENDING_APPRAISALS_SPREADSHEET_ID',
-        'COMPLETED_APPRAISALS_SPREADSHEET_ID'
-      ];
+      logger.info('Starting secrets loading process');
 
       const results = await Promise.allSettled(
-        requiredSecrets.map(async (secret) => {
+        this.requiredSecrets.map(async (secretName) => {
           try {
-            if (typeof secret === 'string') {
-              const value = await this._fetchSecret(secret);
-              this.secrets.set(secret, value);
-              process.env[secret] = value;
-              return { secret, success: true };
-            } else {
-              const value = await this._fetchSecret(secret.secretName);
-              this.secrets.set(secret.secretName, value);
-              process.env[secret.envVar] = value;
-              return { secret: secret.secretName, success: true };
+            // First check if it's already in environment variables
+            if (process.env[secretName]) {
+              logger.info(`Secret ${secretName} found in environment variables`);
+              this.secrets.set(secretName, process.env[secretName]);
+              return { secretName, success: true, source: 'env' };
             }
+
+            // If not in env, try to fetch from Secret Manager
+            const [version] = await this.client.accessSecretVersion({
+              name: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/secrets/${secretName}/versions/latest`,
+            });
+
+            const value = version.payload.data.toString();
+            this.secrets.set(secretName, value);
+            process.env[secretName] = value;
+            
+            return { secretName, success: true, source: 'secret-manager' };
           } catch (error) {
-            return { secret: typeof secret === 'string' ? secret : secret.secretName, success: false, error };
+            logger.error(`Failed to load secret ${secretName}:`, {
+              error: error.message,
+              code: error.code
+            });
+            return { secretName, success: false, error };
           }
         })
       );
 
-      // Log results
       const succeeded = results.filter(r => r.status === 'fulfilled' && r.value.success);
       const failed = results.filter(r => r.status === 'rejected' || !r.value.success);
 
@@ -90,33 +79,25 @@ class SecretManager {
         failed: failed.length
       });
 
-      if (failed.length > 0) {
-        logger.warn('Some secrets failed to load', {
-          failedSecrets: failed.map(f => f.value?.secret || f.reason?.secret)
-        });
+      // Check if we have all required database secrets
+      const hasRequiredSecrets = ['DB_USER', 'DB_PASSWORD', 'DB_NAME'].every(
+        secret => process.env[secret]
+      );
+
+      if (!hasRequiredSecrets) {
+        logger.error('Missing required database secrets');
+        return false;
       }
 
-      this.initialized = true;
-      logger.info('All secrets loaded successfully');
-    } catch (error) {
-      logger.error('Failed to load secrets:', error);
-      throw error;
-    }
-  }
+      logger.info('All required secrets loaded successfully');
+      return true;
 
-  async _fetchSecret(secretName) {
-    try {
-      const [version] = await this.client.accessSecretVersion({
-        name: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/secrets/${secretName}/versions/latest`,
-      });
-
-      return version.payload.data.toString();
     } catch (error) {
-      logger.error(`Error fetching secret ${secretName}:`, {
+      logger.error('Failed to load secrets:', {
         error: error.message,
-        code: error.code
+        stack: error.stack
       });
-      throw error;
+      return false;
     }
   }
 }
