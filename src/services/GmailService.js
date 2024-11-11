@@ -79,103 +79,100 @@ class GmailService {
         rawData: webhookData.message.data
       });
 
-      // Get history with debug info
-      logger.debug('Fetching history with params:', {
+      // First get the latest messages
+      logger.debug('Fetching messages...', {
         userId: 'me',
-        startHistoryId: decodedData.historyId,
-        labelIds: ['INBOX'],
-        historyTypes: ['messageAdded']
+        labelIds: ['INBOX', 'UNREAD']
       });
 
-      const history = await this.gmail.users.history.list({
+      const messagesResponse = await this.gmail.users.messages.list({
         userId: 'me',
-        startHistoryId: decodedData.historyId,
-        labelIds: ['INBOX'],
-        historyTypes: ['messageAdded']
+        labelIds: ['INBOX', 'UNREAD'],
+        maxResults: 10
       });
 
-      logger.info('Retrieved history:', {
-        hasHistory: !!history.data.history,
-        itemCount: history.data.history?.length || 0,
-        rawHistoryData: JSON.stringify(history.data)
+      if (!messagesResponse.data.messages || messagesResponse.data.messages.length === 0) {
+        logger.info('No new messages found');
+        return { processed: 0, messages: [], tickets: [] };
+      }
+
+      logger.info('Found messages:', {
+        count: messagesResponse.data.messages.length,
+        messageIds: messagesResponse.data.messages.map(m => m.id)
       });
 
       const messages = [];
       const tickets = [];
 
-      if (history.data.history) {
-        for (const item of history.data.history) {
-          logger.debug('Processing history item:', {
-            historyId: item.id,
-            hasMessagesAdded: !!item.messagesAdded,
-            messagesCount: item.messagesAdded?.length || 0
+      // Process each message
+      for (const messageData of messagesResponse.data.messages) {
+        try {
+          logger.info('Processing message:', { 
+            messageId: messageData.id,
+            threadId: messageData.threadId
           });
+          
+          const emailData = await this.getEmailData(messageData.id);
+          if (emailData) {
+            logger.debug('Email data retrieved:', {
+              messageId: messageData.id,
+              subject: emailData.subject,
+              from: emailData.from,
+              hasContent: !!emailData.content
+            });
 
-          if (item.messagesAdded) {
-            for (const messageAdded of item.messagesAdded) {
-              try {
-                const message = messageAdded.message;
-                logger.info('Processing message:', { 
-                  messageId: message.id,
-                  threadId: message.threadId,
-                  labelIds: message.labelIds
+            messages.push(emailData);
+            
+            const existingTicket = await this.findExistingTicket(emailData.threadId);
+            if (!existingTicket) {
+              logger.debug('Creating new ticket for thread:', {
+                threadId: emailData.threadId,
+                subject: emailData.subject
+              });
+
+              const ticket = await this.createOrUpdateTicket(emailData);
+              if (ticket) {
+                tickets.push(ticket);
+                logger.info('Created new ticket:', { 
+                  ticketId: ticket.id,
+                  messageId: messageData.id,
+                  subject: ticket.subject,
+                  status: ticket.status
                 });
-                
-                const emailData = await this.getEmailData(message.id);
-                if (emailData) {
-                  logger.debug('Email data retrieved:', {
-                    messageId: message.id,
-                    subject: emailData.subject,
-                    from: emailData.from,
-                    hasContent: !!emailData.content
-                  });
 
-                  messages.push(emailData);
-                  
-                  const existingTicket = await this.findExistingTicket(emailData.threadId);
-                  if (!existingTicket) {
-                    logger.debug('Creating new ticket for thread:', {
-                      threadId: emailData.threadId,
-                      subject: emailData.subject
-                    });
-
-                    const ticket = await this.createOrUpdateTicket(emailData);
-                    if (ticket) {
-                      tickets.push(ticket);
-                      logger.info('Created new ticket:', { 
-                        ticketId: ticket.id,
-                        messageId: message.id,
-                        subject: ticket.subject,
-                        status: ticket.status
-                      });
-                    } else {
-                      logger.warn('Failed to create ticket:', {
-                        messageId: message.id,
-                        threadId: emailData.threadId
-                      });
-                    }
-                  } else {
-                    logger.info('Ticket already exists:', {
-                      ticketId: existingTicket.id,
-                      messageId: message.id,
-                      status: existingTicket.status
-                    });
+                // Mark message as read after processing
+                await this.gmail.users.messages.modify({
+                  userId: 'me',
+                  id: messageData.id,
+                  requestBody: {
+                    removeLabelIds: ['UNREAD']
                   }
-                } else {
-                  logger.warn('Failed to get email data:', {
-                    messageId: message.id,
-                    threadId: message.threadId
-                  });
-                }
-              } catch (error) {
-                logger.error('Error processing individual message:', {
-                  messageId: messageAdded.message.id,
-                  error: error.message,
-                  stack: error.stack
+                });
+              } else {
+                logger.warn('Failed to create ticket:', {
+                  messageId: messageData.id,
+                  threadId: emailData.threadId
                 });
               }
+            } else {
+              logger.info('Ticket already exists:', {
+                ticketId: existingTicket.id,
+                messageId: messageData.id,
+                status: existingTicket.status
+              });
             }
+          } else {
+            logger.warn('Failed to get email data:', {
+              messageId: messageData.id,
+              threadId: messageData.threadId
+            });
           }
+        } catch (error) {
+          logger.error('Error processing individual message:', {
+            messageId: messageData.id,
+            error: error.message,
+            stack: error.stack
+          });
         }
       }
 
