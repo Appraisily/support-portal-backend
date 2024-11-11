@@ -36,7 +36,7 @@ RUN mkdir -p /cloudsql && \
 ENV NODE_ENV=production \
     PORT=8080
 
-# Health check
+# Health check with longer startup period
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8080/_health || exit 1
 
