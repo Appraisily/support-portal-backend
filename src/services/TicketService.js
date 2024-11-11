@@ -39,6 +39,86 @@ class TicketService {
     }
   }
 
+  async listTickets(filters = {}, pagination = {}) {
+    try {
+      await this.ensureInitialized();
+      
+      const { status, priority, sortBy = 'lastMessageAt', sortOrder = 'DESC', search } = filters;
+      const page = Math.max(1, parseInt(pagination.page) || 1);
+      const limit = Math.max(1, Math.min(50, parseInt(pagination.limit) || 10));
+
+      logger.info('Listing tickets with filters:', {
+        filters: { status, priority },
+        pagination: { page, limit },
+        sorting: { sortBy, sortOrder }
+      });
+
+      const where = {};
+      
+      if (status) {
+        where.status = status === 'pending' ? 'open' : status;
+      }
+      
+      if (priority) {
+        where.priority = priority;
+      }
+
+      if (search) {
+        where[Op.or] = [
+          { subject: { [Op.iLike]: `%${search}%` } },
+          { '$customer.name$': { [Op.iLike]: `%${search}%` } },
+          { '$customer.email$': { [Op.iLike]: `%${search}%` } }
+        ];
+      }
+
+      const { rows: tickets, count } = await this.models.Ticket.findAndCountAll({
+        where,
+        include: [
+          {
+            model: this.models.Customer,
+            as: 'customer',
+            attributes: ['id', 'name', 'email']
+          }
+        ],
+        order: [[sortBy, sortOrder]],
+        limit,
+        offset: (page - 1) * limit,
+        distinct: true
+      });
+
+      const mappedTickets = tickets.map(ticket => {
+        const plainTicket = ticket.get({ plain: true });
+        if (plainTicket.status === 'open') {
+          plainTicket.status = 'pending';
+        }
+        return plainTicket;
+      });
+
+      logger.info('Successfully retrieved tickets', {
+        count,
+        page,
+        totalPages: Math.ceil(count / limit)
+      });
+
+      return {
+        tickets: mappedTickets,
+        pagination: {
+          total: count,
+          page,
+          totalPages: Math.ceil(count / limit),
+          limit
+        }
+      };
+
+    } catch (error) {
+      logger.error('Error listing tickets:', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
   async getTicketById(id) {
     try {
       await this.ensureInitialized();
@@ -158,7 +238,104 @@ class TicketService {
     }
   }
 
-  // ... rest of the service methods remain unchanged ...
+  async createTicket(data) {
+    try {
+      await this.ensureInitialized();
+
+      const ticket = await this.models.Ticket.create({
+        subject: data.subject,
+        category: data.category,
+        priority: data.priority || 'medium',
+        customerId: data.customerId,
+        status: 'open'
+      });
+
+      logger.info('Ticket created successfully', {
+        ticketId: ticket.id,
+        subject: ticket.subject,
+        customerId: ticket.customerId
+      });
+
+      return ticket;
+    } catch (error) {
+      logger.error('Error creating ticket:', {
+        error: error.message,
+        data
+      });
+      throw error;
+    }
+  }
+
+  async updateTicket(id, data) {
+    try {
+      await this.ensureInitialized();
+
+      const ticket = await this.models.Ticket.findByPk(id);
+      if (!ticket) {
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      // Map 'pending' status to 'open' for database
+      if (data.status === 'pending') {
+        data.status = 'open';
+      }
+
+      await ticket.update(data);
+
+      logger.info('Ticket updated successfully', {
+        ticketId: id,
+        updates: data
+      });
+
+      return ticket;
+    } catch (error) {
+      logger.error('Error updating ticket:', {
+        error: error.message,
+        ticketId: id,
+        updates: data
+      });
+      throw error;
+    }
+  }
+
+  async addReply(ticketId, data) {
+    try {
+      await this.ensureInitialized();
+      
+      const ticket = await this.models.Ticket.findByPk(ticketId);
+      if (!ticket) {
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      const reply = await this.models.Message.create({
+        ticketId,
+        content: data.content,
+        direction: data.direction || 'outbound',
+        userId: data.userId,
+        attachments: data.attachments
+      });
+
+      // Update ticket's last message timestamp
+      await ticket.update({
+        lastMessageAt: new Date()
+      });
+
+      logger.info('Reply added successfully', {
+        messageId: reply.id,
+        direction: reply.direction,
+        ticketId
+      });
+
+      return reply;
+    } catch (error) {
+      logger.error('Error adding reply:', {
+        error: error.message,
+        ticketId,
+        data
+      });
+      throw error;
+    }
+  }
 }
 
 module.exports = new TicketService();
