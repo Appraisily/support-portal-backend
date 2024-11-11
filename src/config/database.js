@@ -20,18 +20,9 @@ const initializeDatabase = async () => {
       throw new Error('Failed to load required secrets');
     }
 
-    // 2. Verify required environment variables
-    const requiredEnvVars = ['DB_USER', 'DB_PASSWORD', 'DB_NAME', 'DB_HOST'];
-    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
-    
-    if (missingVars.length > 0) {
-      throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
-    }
-
-    // 3. Configure database connection
+    // 2. Configure database connection
     config = {
       dialect: 'postgres',
-      host: process.env.DB_HOST,
       database: process.env.DB_NAME,
       username: process.env.DB_USER,
       password: process.env.DB_PASSWORD,
@@ -44,17 +35,22 @@ const initializeDatabase = async () => {
       }
     };
 
-    // 4. Add production-specific configuration
+    // 3. Configure connection based on environment
     if (process.env.NODE_ENV === 'production') {
       const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
       if (!connectionName) {
         throw new Error('Missing CLOUD_SQL_CONNECTION_NAME in production');
       }
 
+      config.host = `/cloudsql/${connectionName}`;
       config.dialectOptions = {
         socketPath: `/cloudsql/${connectionName}`,
         ssl: false
       };
+    } else {
+      // Development configuration
+      config.host = process.env.DB_HOST;
+      config.port = process.env.DB_PORT;
     }
 
     logger.info('Initializing database connection...', {
@@ -64,16 +60,41 @@ const initializeDatabase = async () => {
       environment: process.env.NODE_ENV
     });
 
-    // 5. Create Sequelize instance
+    // 4. Create Sequelize instance
     sequelize = new Sequelize(config);
 
-    // 6. Test connection
+    // 5. Test connection
     await sequelize.authenticate();
     logger.info('Database connection established successfully');
 
-    // 7. Initialize models
+    // 6. Initialize models
     await models.initialize(sequelize);
     logger.info('Models initialized successfully');
+
+    // 7. Run migrations if in production
+    if (process.env.NODE_ENV === 'production') {
+      logger.info('Running database migrations...');
+      const { Umzug, SequelizeStorage } = require('umzug');
+      const umzug = new Umzug({
+        migrations: { 
+          glob: 'src/migrations/*.js',
+          resolve: ({ name, path, context }) => {
+            const migration = require(path);
+            return {
+              name,
+              up: async () => migration.up(context, Sequelize),
+              down: async () => migration.down(context, Sequelize)
+            };
+          }
+        },
+        context: sequelize.getQueryInterface(),
+        storage: new SequelizeStorage({ sequelize }),
+        logger: console
+      });
+
+      await umzug.up();
+      logger.info('Database migrations completed successfully');
+    }
 
     return sequelize;
   } catch (error) {

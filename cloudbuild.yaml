@@ -42,11 +42,9 @@ steps:
         CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME}
       - '--set-secrets'
       - >-
-        DB_HOST=DB_HOST:latest,
-        DB_PORT=DB_PORT:latest,
-        DB_NAME=DB_NAME:latest,
         DB_USER=DB_USER:latest,
         DB_PASSWORD=DB_PASSWORD:latest,
+        DB_NAME=DB_NAME:latest,
         JWT_SECRET=jwt-secret:latest,
         OPENAI_API_KEY=OPENAI_API_KEY:latest,
         SALES_SPREADSHEET_ID=SALES_SPREADSHEET_ID:latest,
