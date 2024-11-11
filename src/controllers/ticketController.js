@@ -1,4 +1,5 @@
 const ticketService = require('../services/TicketService');
+const gmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
 
 exports.listTickets = async (req, res, next) => {
@@ -65,12 +66,28 @@ exports.updateTicket = async (req, res, next) => {
 
 exports.replyToTicket = async (req, res, next) => {
   try {
-    const reply = await ticketService.addReply(req.params.id, {
+    const ticketId = req.params.id;
+    
+    // First get the ticket to get customer email and thread ID
+    const ticket = await ticketService.getTicketById(ticketId);
+    
+    // Create the reply in the database
+    const reply = await ticketService.addReply(ticketId, {
       content: req.body.content,
       direction: req.body.direction || 'outbound',
-      userId: null, // Make userId optional since we're using a simplified auth system
+      userId: null,
       attachments: req.body.attachments
     });
+
+    // Send the email reply
+    if (ticket.customer && ticket.customer.email) {
+      await gmailService.sendEmail(
+        ticket.customer.email,
+        `Re: ${ticket.subject}`,
+        req.body.content,
+        ticket.gmailThreadId
+      );
+    }
     
     res.status(201).json({ 
       success: true, 
