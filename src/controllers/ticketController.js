@@ -67,7 +67,7 @@ exports.replyToTicket = async (req, res, next) => {
   try {
     const reply = await ticketService.addReply(req.params.id, {
       content: req.body.content,
-      direction: req.body.direction || 'outbound', // Default to outbound if not specified
+      direction: req.body.direction || 'outbound',
       userId: req.user.id,
       attachments: req.body.attachments
     });
