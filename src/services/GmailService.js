@@ -47,11 +47,7 @@ class GmailService {
 
       this.oauth2Client.setCredentials({
         refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-        scope: [
-          'https://www.googleapis.com/auth/gmail.modify',
-          'https://www.googleapis.com/auth/gmail.readonly',
-          'https://www.googleapis.com/auth/gmail.metadata'
-        ].join(' ')
+        scope: 'https://mail.google.com/'
       });
 
       this.gmail = google.gmail({
@@ -77,11 +73,6 @@ class GmailService {
         emailAddress: decodedData.emailAddress,
         historyId: decodedData.historyId,
         rawData: webhookData.message.data
-      });
-
-      logger.debug('Fetching messages...', {
-        userId: 'me',
-        labelIds: ['INBOX', 'UNREAD']
       });
 
       const messagesResponse = await this.gmail.users.messages.list({
@@ -226,7 +217,8 @@ class GmailService {
       const message = await this.gmail.users.messages.get({
         userId: 'me',
         id: messageId,
-        format: 'full'
+        format: 'metadata',
+        metadataHeaders: ['From', 'To', 'Subject', 'Date', 'Message-ID', 'References', 'In-Reply-To']
       });
 
       const headers = message.data.payload.headers;
@@ -237,9 +229,16 @@ class GmailService {
         from: this.getHeader(headers, 'From'),
         to: this.getHeader(headers, 'To'),
         inReplyTo: this.getHeader(headers, 'In-Reply-To'),
-        references: this.getHeader(headers, 'References'),
-        content: this.extractContent(message.data.payload)
+        references: this.getHeader(headers, 'References')
       };
+
+      // Get full message content in a separate call
+      const fullMessage = await this.gmail.users.messages.get({
+        userId: 'me',
+        id: messageId
+      });
+
+      emailData.content = this.extractContent(fullMessage.data.payload);
 
       logger.info('Email data extracted:', {
         messageId: emailData.messageId,
