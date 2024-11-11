@@ -94,7 +94,7 @@ Ticket information:
     await this.ensureInitialized();
 
     try {
-      logger.info('Generating reply with OpenAI', {
+      logger.info('Starting OpenAI reply generation', {
         ticketId: ticket.id,
         messageCount: messages.length,
         hasCustomerInfo: !!customerInfo
@@ -105,7 +105,7 @@ Ticket information:
       logger.info('Formatted messages for OpenAI:', {
         ticketId: ticket.id,
         messageCount: formattedMessages.length,
-        systemPrompt: formattedMessages[0].content
+        messages: formattedMessages
       });
 
       const completion = await this.client.chat.completions.create({
@@ -122,8 +122,19 @@ Ticket information:
       logger.info('OpenAI generated reply:', {
         ticketId: ticket.id,
         replyLength: generatedReply.length,
-        generatedReply,
+        reply: generatedReply,
         usage: completion.usage
+      });
+
+      // Log full response details for debugging
+      logger.debug('Full OpenAI response:', {
+        ticketId: ticket.id,
+        completion: {
+          id: completion.id,
+          model: completion.model,
+          choices: completion.choices,
+          usage: completion.usage
+        }
       });
 
       return {
