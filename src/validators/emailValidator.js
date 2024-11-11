@@ -1,4 +1,4 @@
-const { body } = require('express-validator');
+const { body, param } = require('express-validator');
 const { validateResult } = require('../middleware/validator');
 
 exports.validateEmailGeneration = [
@@ -33,6 +33,14 @@ exports.validateEmailGeneration = [
     .optional()
     .isString()
     .withMessage('Priority must be a string'),
+
+  validateResult
+];
+
+exports.validateTicketReplyGeneration = [
+  param('ticketId')
+    .isUUID()
+    .withMessage('Invalid ticket ID format'),
 
   validateResult
 ];
