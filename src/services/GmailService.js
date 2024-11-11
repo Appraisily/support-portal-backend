@@ -1,125 +1,79 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/apiError');
-const { getModels } = require('../models');
 
 class GmailService {
-  constructor() {
-    this.userEmail = 'info@appraisily.com';
-    this.oauth2Client = null;
-    this.gmail = null;
-    this.initialized = false;
-    this.initPromise = null;
-    this.lastHistoryId = null;
-  }
+  // ... existing initialization code ...
 
-  async ensureInitialized() {
-    if (this.initialized) return;
-    if (this.initPromise) return this.initPromise;
-
+  async processWebhook(data) {
     try {
-      this.initPromise = this._initialize();
-      await this.initPromise;
-      this.initialized = true;
+      const message = await this.getMessage(data.messageId);
+      
+      // Only process messages that:
+      // 1. Are in the INBOX
+      // 2. Are not spam/automated notifications
+      // 3. Have valid sender information
+      if (!this._shouldProcessMessage(message)) {
+        logger.info('Skipping message - does not meet processing criteria', {
+          messageId: data.messageId,
+          threadId: message.threadId,
+          labelIds: message.labelIds
+        });
+        return { processed: false };
+      }
+
+      // Process the message
+      // ... rest of processing logic ...
     } catch (error) {
-      this.initPromise = null;
-      logger.error('Gmail service initialization failed', {
-        error: error.message,
-        stack: error.stack
-      });
+      logger.error('Error processing webhook:', error);
       throw error;
     }
   }
 
-  async _initialize() {
-    try {
-      const SCOPES = [
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/gmail.send'
-      ];
-
-      this.oauth2Client = new google.auth.OAuth2(
-        process.env.GMAIL_CLIENT_ID,
-        process.env.GMAIL_CLIENT_SECRET,
-        'https://developers.google.com/oauthplayground'
-      );
-
-      this.oauth2Client.setCredentials({
-        refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-        scope: SCOPES.join(' ')
-      });
-
-      this.gmail = google.gmail({
-        version: 'v1',
-        auth: this.oauth2Client
-      });
-
-      logger.info('Gmail service initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize Gmail service:', error);
-      throw new ApiError(503, 'Gmail service initialization failed');
+  _shouldProcessMessage(message) {
+    // Check if message is in INBOX
+    if (!message.labelIds?.includes('INBOX')) {
+      return false;
     }
+
+    // Skip if marked as spam
+    if (message.labelIds?.includes('SPAM')) {
+      return false;
+    }
+
+    // Skip automated notifications (customize this list based on your needs)
+    const skipDomains = [
+      'noreply@',
+      'no-reply@',
+      'donotreply@',
+      'automated@',
+      'notifications@github.com',
+      'notification@',
+      'alerts@'
+    ];
+
+    const from = message.payload?.headers?.find(h => h.name.toLowerCase() === 'from')?.value || '';
+    if (skipDomains.some(domain => from.toLowerCase().includes(domain))) {
+      return false;
+    }
+
+    // Skip messages with certain subjects (customize as needed)
+    const subject = message.payload?.headers?.find(h => h.name.toLowerCase() === 'subject')?.value || '';
+    const skipSubjects = [
+      'automatic reply',
+      'out of office',
+      'away from office',
+      'vacation response'
+    ];
+
+    if (skipSubjects.some(skip => subject.toLowerCase().includes(skip))) {
+      return false;
+    }
+
+    return true;
   }
 
-  async sendEmail(to, subject, content, threadId = null) {
-    await this.ensureInitialized();
-
-    try {
-      logger.info('Sending email', {
-        to,
-        subject,
-        threadId: threadId || 'new thread'
-      });
-
-      const message = [
-        'Content-Type: text/plain; charset="UTF-8"',
-        'MIME-Version: 1.0',
-        'Content-Transfer-Encoding: 7bit',
-        `To: ${to}`,
-        `From: ${this.userEmail}`,
-        `Subject: ${subject}`,
-        '',
-        content
-      ].join('\n');
-
-      const encodedMessage = Buffer.from(message)
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
-
-      const params = {
-        userId: 'me',
-        resource: {
-          raw: encodedMessage,
-          ...(threadId && { threadId })
-        }
-      };
-
-      const response = await this.gmail.users.messages.send(params);
-
-      logger.info('Email sent successfully', {
-        messageId: response.data.id,
-        threadId: response.data.threadId
-      });
-
-      return {
-        success: true,
-        messageId: response.data.id,
-        threadId: response.data.threadId
-      };
-
-    } catch (error) {
-      logger.error('Error sending email:', {
-        error: error.message,
-        stack: error.stack
-      });
-      throw error;
-    }
-  }
-
-  // ... rest of the existing methods ...
+  // ... rest of the service code ...
 }
 
 module.exports = new GmailService();

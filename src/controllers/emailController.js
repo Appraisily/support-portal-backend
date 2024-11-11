@@ -7,14 +7,16 @@ const ApiError = require('../utils/apiError');
 exports.generateTicketReply = async (req, res, next) => {
   try {
     const { ticketId } = req.params;
-
     logger.info('Starting ticket reply generation', { ticketId });
 
     // Get ticket with messages and customer info
-    const ticket = await TicketService.getTicketById(ticketId);
-    if (!ticket) {
+    const ticketResponse = await TicketService.getTicketById(ticketId);
+    if (!ticketResponse.success) {
       throw new ApiError(404, 'Ticket not found');
     }
+
+    const ticket = ticketResponse.data;
+    const messages = ticket.messages;
 
     // Get customer information from sheets
     let customerInfo = null;
@@ -31,14 +33,8 @@ exports.generateTicketReply = async (req, res, next) => {
           error: error.message,
           customerEmail: ticket.customer.email
         });
-        // Continue without customer info
       }
     }
-
-    // Get messages in chronological order
-    const messages = ticket.messages.sort((a, b) => 
-      new Date(a.createdAt) - new Date(b.createdAt)
-    );
 
     logger.info('Preparing to generate reply', {
       ticketId,
@@ -47,11 +43,15 @@ exports.generateTicketReply = async (req, res, next) => {
     });
 
     // Generate reply using OpenAI with full context
-    const result = await OpenAIService.generateTicketReply(ticket, messages, customerInfo);
+    const result = await OpenAIService.generateTicketReply(
+      ticket,
+      messages,
+      customerInfo
+    );
 
-    logger.info('Successfully generated ticket reply', {
+    logger.info('Reply generated successfully', {
       ticketId,
-      generatedReply: result.reply
+      replyLength: result.reply.length
     });
 
     res.json({

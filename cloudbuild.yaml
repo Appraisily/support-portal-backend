@@ -7,6 +7,18 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/support-portal-backend']
   
+  # Run database migrations
+  - name: 'gcr.io/$PROJECT_ID/support-portal-backend'
+    entrypoint: 'node'
+    args: ['node_modules/.bin/sequelize-cli', 'db:migrate']
+    env:
+      - 'NODE_ENV=production'
+      - 'DB_HOST=/cloudsql/${_CLOUD_SQL_CONNECTION_NAME}'
+      - 'DB_NAME=${_DB_NAME}'
+      - 'DB_USER=${_DB_USER}'
+      - 'DB_PASSWORD=${_DB_PASSWORD}'
+      - 'CLOUD_SQL_CONNECTION_NAME=${_CLOUD_SQL_CONNECTION_NAME}'
+  
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
@@ -54,3 +66,5 @@ images:
 
 substitutions:
   _CLOUD_SQL_CONNECTION_NAME: 'civil-forge-403609:us-central1:support-portal-db'
+  _DB_NAME: 'support_portal'
+  _DB_USER: 'support_portal_user'

@@ -1,4 +1,4 @@
-<content>const { DataTypes } = require('sequelize');
+const { DataTypes } = require('sequelize');
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -109,4 +109,4 @@ module.exports = {
       throw error;
     }
   }
-};</content>
+};
