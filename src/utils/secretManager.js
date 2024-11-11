@@ -52,7 +52,11 @@ class SecretManager {
         },
 
         // OpenAI API key
-        'OPENAI_API_KEY'
+        'OPENAI_API_KEY',
+
+        // Google Sheets IDs
+        'SALES_SPREADSHEET_ID',
+        'PENDING_APPRAISALS_SPREADSHEET_ID'
       ];
 
       for (const secret of requiredSecrets) {
