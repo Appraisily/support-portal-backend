@@ -1,44 +1,93 @@
-const User = require('../models/user');
 const jwt = require('jsonwebtoken');
-const ApiError = require('../utils/apiError');
 const logger = require('../utils/logger');
+const secretManager = require('../utils/secretManager');
 
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-
-    const user = await User.findOne({ email });
-    if (!user || !(await user.comparePassword(password))) {
-      throw new ApiError(401, 'Invalid email or password');
+    
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email and password are required'
+      });
     }
 
+    logger.info('Login attempt', { email });
+
+    // Get admin credentials from Secret Manager
+    const adminEmail = await secretManager.getSecret('ADMIN_EMAIL');
+    const adminPassword = await secretManager.getSecret('ADMIN_PASSWORD');
+    const jwtSecret = await secretManager.getSecret('jwt-secret');
+
+    if (!adminEmail || !adminPassword || !jwtSecret) {
+      logger.error('Missing required secrets for authentication');
+      throw new Error('Authentication configuration missing');
+    }
+
+    // Verify credentials
+    if (email !== adminEmail || password !== adminPassword) {
+      logger.warn('Invalid login credentials', { email });
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    // Generate JWT token
     const token = jwt.sign(
-      { id: user._id, role: user.role },
-      process.env.JWT_SECRET,
+      { 
+        id: 'admin',
+        email: adminEmail,
+        role: 'admin'
+      },
+      jwtSecret,
       { expiresIn: '24h' }
     );
 
-    logger.info(`User ${user.email} logged in`);
+    logger.info('Login successful', {
+      email: adminEmail,
+      role: 'admin'
+    });
+
     res.json({
+      success: true,
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
+        id: 'admin',
+        email: adminEmail,
+        name: 'Administrator',
+        role: 'admin'
       }
     });
+
   } catch (error) {
+    logger.error('Login error', {
+      error: error.message,
+      stack: error.stack
+    });
     next(error);
   }
 };
 
-exports.logout = async (req, res, next) => {
+exports.logout = async (req, res) => {
   try {
-    // In a real implementation, you might want to blacklist the token
-    logger.info(`User ${req.user.id} logged out`);
-    res.json({ success: true });
+    logger.info('User logged out', {
+      userId: req.user?.id
+    });
+    
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
   } catch (error) {
-    next(error);
+    logger.error('Logout error', {
+      error: error.message,
+      userId: req.user?.id
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Error during logout'
+    });
   }
 };

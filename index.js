@@ -1,3 +1,7 @@
-// run `node index.js` in the terminal
+const logger = require('./src/utils/logger');
 
-console.log(`Hello Node.js v${process.versions.node}!`);
+logger.info('Node.js version information', {
+  nodeVersion: process.versions.node,
+  v8Version: process.versions.v8,
+  environment: process.env.NODE_ENV
+});

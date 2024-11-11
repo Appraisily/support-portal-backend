@@ -5,10 +5,6 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true
     },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
     email: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -21,38 +17,35 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: false
     },
-    role: {
-      type: DataTypes.ENUM('admin', 'agent', 'user'),
-      defaultValue: 'user'
+    name: {
+      type: DataTypes.STRING,
+      allowNull: false
     },
-    preferences: {
-      type: DataTypes.JSONB,
-      defaultValue: {
-        notifications: true,
-        theme: 'light'
-      }
+    role: {
+      type: DataTypes.ENUM('admin', 'agent'),
+      defaultValue: 'agent'
+    },
+    avatar: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
     }
   }, {
-    timestamps: true,
-    hooks: {
-      beforeSave: async (user) => {
-        if (user.changed('password')) {
-          const bcrypt = require('bcryptjs');
-          user.password = await bcrypt.hash(user.password, 12);
-        }
-      }
-    }
+    timestamps: true
   });
 
-  User.prototype.comparePassword = async function(candidatePassword) {
-    const bcrypt = require('bcryptjs');
-    return await bcrypt.compare(candidatePassword, this.password);
-  };
-
-  User.associate = (models) => {
+  User.associate = function(models) {
     User.hasMany(models.Ticket, {
       foreignKey: 'assignedToId',
       as: 'assignedTickets'
+    });
+    
+    User.hasMany(models.Message, {
+      foreignKey: 'userId',
+      as: 'messages'
     });
   };
 
