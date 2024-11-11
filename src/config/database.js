@@ -7,15 +7,27 @@ const models = require('../models');
 let sequelize = null;
 let config = null;
 
+const waitForSecrets = async (retries = 30, delay = 1000) => {
+  for (let i = 0; i < retries; i++) {
+    if (process.env.DB_USER && process.env.DB_PASSWORD && process.env.DB_NAME) {
+      return true;
+    }
+    logger.info('Waiting for database secrets...');
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  throw new Error('Timeout waiting for database secrets');
+};
+
 const initializeDatabase = async () => {
   if (sequelize) {
     return sequelize;
   }
 
   try {
-    // 1. First ensure secrets are loaded
+    // 1. First ensure secrets are loaded and wait if necessary
     logger.info('Loading database secrets...');
     await secretManager.ensureInitialized();
+    await waitForSecrets();
     
     // 2. Configure database connection
     config = {
@@ -26,12 +38,24 @@ const initializeDatabase = async () => {
         min: 0,
         acquire: 30000,
         idle: 10000
+      },
+      retry: {
+        max: 5,
+        match: [
+          /SequelizeConnectionError/,
+          /SequelizeConnectionRefusedError/,
+          /SequelizeHostNotFoundError/,
+          /SequelizeHostNotReachableError/,
+          /SequelizeInvalidConnectionError/,
+          /SequelizeConnectionTimedOutError/
+        ],
+        backoffBase: 1000,
+        backoffExponent: 1.5
       }
     };
 
     // 3. Configure connection based on environment
     if (process.env.NODE_ENV === 'production') {
-      // Cloud SQL configuration
       const connectionName = process.env.CLOUD_SQL_CONNECTION_NAME;
       config.host = connectionName ?
         `/cloudsql/${connectionName}` :
@@ -43,7 +67,6 @@ const initializeDatabase = async () => {
         ssl: false
       };
     } else {
-      // Local development configuration
       config.host = process.env.DB_HOST;
       config.port = process.env.DB_PORT;
       config.dialectOptions = {
@@ -71,31 +94,6 @@ const initializeDatabase = async () => {
     // 6. Initialize models
     await models.initialize(sequelize);
     logger.info('Models initialized successfully');
-
-    // 7. Run migrations using Umzug
-    if (process.env.NODE_ENV === 'production') {
-      logger.info('Running database migrations...');
-      const { Umzug, SequelizeStorage } = require('umzug');
-      const umzug = new Umzug({
-        migrations: { 
-          glob: path.join(__dirname, '../migrations/*.js'),
-          resolve: ({ name, path, context }) => {
-            const migration = require(path);
-            return {
-              name,
-              up: async () => migration.up(context, Sequelize),
-              down: async () => migration.down(context, Sequelize)
-            };
-          }
-        },
-        context: sequelize.getQueryInterface(),
-        storage: new SequelizeStorage({ sequelize }),
-        logger: console
-      });
-
-      await umzug.up();
-      logger.info('Database migrations completed successfully');
-    }
 
     return sequelize;
   } catch (error) {

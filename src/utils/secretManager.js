@@ -56,19 +56,44 @@ class SecretManager {
 
         // Google Sheets IDs
         'SALES_SPREADSHEET_ID',
-        'PENDING_APPRAISALS_SPREADSHEET_ID'
+        'PENDING_APPRAISALS_SPREADSHEET_ID',
+        'COMPLETED_APPRAISALS_SPREADSHEET_ID'
       ];
 
-      for (const secret of requiredSecrets) {
-        if (typeof secret === 'string') {
-          const value = await this._fetchSecret(secret);
-          this.secrets.set(secret, value);
-          process.env[secret] = value;
-        } else {
-          const value = await this._fetchSecret(secret.secretName);
-          this.secrets.set(secret.secretName, value);
-          process.env[secret.envVar] = value;
-        }
+      const results = await Promise.allSettled(
+        requiredSecrets.map(async (secret) => {
+          try {
+            if (typeof secret === 'string') {
+              const value = await this._fetchSecret(secret);
+              this.secrets.set(secret, value);
+              process.env[secret] = value;
+              return { secret, success: true };
+            } else {
+              const value = await this._fetchSecret(secret.secretName);
+              this.secrets.set(secret.secretName, value);
+              process.env[secret.envVar] = value;
+              return { secret: secret.secretName, success: true };
+            }
+          } catch (error) {
+            return { secret: typeof secret === 'string' ? secret : secret.secretName, success: false, error };
+          }
+        })
+      );
+
+      // Log results
+      const succeeded = results.filter(r => r.status === 'fulfilled' && r.value.success);
+      const failed = results.filter(r => r.status === 'rejected' || !r.value.success);
+
+      logger.info('Secrets loading completed', {
+        total: results.length,
+        succeeded: succeeded.length,
+        failed: failed.length
+      });
+
+      if (failed.length > 0) {
+        logger.warn('Some secrets failed to load', {
+          failedSecrets: failed.map(f => f.value?.secret || f.reason?.secret)
+        });
       }
 
       this.initialized = true;
@@ -85,13 +110,12 @@ class SecretManager {
         name: `projects/${process.env.GOOGLE_CLOUD_PROJECT_ID}/secrets/${secretName}/versions/latest`,
       });
 
-      const secretValue = version.payload.data.toString();
-      return secretValue;
+      return version.payload.data.toString();
     } catch (error) {
-      if (error.code === 5) { // NOT_FOUND
-        logger.warn(`Secret ${secretName} not found, skipping...`);
-        throw error;
-      }
+      logger.error(`Error fetching secret ${secretName}:`, {
+        error: error.message,
+        code: error.code
+      });
       throw error;
     }
   }
