@@ -30,7 +30,15 @@ module.exports = (sequelize, DataTypes) => {
     sequelize,
     modelName: 'MessageAttachment',
     tableName: 'message_attachments',
-    timestamps: true
+    timestamps: true,
+    indexes: [
+      {
+        fields: ['messageId']
+      },
+      {
+        fields: ['attachmentId']
+      }
+    ]
   });
 
   return MessageAttachment;

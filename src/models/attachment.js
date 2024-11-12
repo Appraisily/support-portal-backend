@@ -9,7 +9,7 @@ module.exports = (sequelize, DataTypes) => {
       });
       
       Attachment.belongsToMany(models.Message, {
-        through: 'MessageAttachments',
+        through: 'message_attachments',
         foreignKey: 'attachmentId',
         otherKey: 'messageId',
         as: 'messages'
@@ -43,7 +43,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: 'Customers',
+        model: 'customers',
         key: 'id'
       }
     }
