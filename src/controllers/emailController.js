@@ -7,51 +7,80 @@ const ApiError = require('../utils/apiError');
 const ticketService = new TicketService();
 
 exports.generateTicketReply = async (req, res, next) => {
+  const startTime = Date.now();
+  const { ticketId } = req.params;
+
   try {
-    const { ticketId } = req.params;
     logger.info('Starting ticket reply generation', { ticketId });
 
+    // Initialize services
     await ticketService.ensureInitialized();
 
     // Get ticket with messages and customer info
     const ticketResponse = await ticketService.getTicketById(ticketId);
+    
     if (!ticketResponse.success) {
+      logger.error('Failed to fetch ticket:', {
+        ticketId,
+        error: 'Ticket not found'
+      });
       throw new ApiError(404, 'Ticket not found');
     }
 
     const ticket = ticketResponse.data;
     const messages = ticket.messages;
 
-    logger.info('Preparing to generate reply', {
+    logger.info('Retrieved ticket data:', {
       ticketId,
+      subject: ticket.subject,
       messageCount: messages.length,
       hasCustomerInfo: !!ticket.customerInfo
     });
 
-    // Generate reply using OpenAI with full context
-    const result = await OpenAIService.generateTicketReply(
+    // Generate reply using OpenAI
+    const openAIResponse = await OpenAIService.generateTicketReply(
       ticket,
       messages,
       ticket.customerInfo
     );
 
+    if (!openAIResponse.success || !openAIResponse.reply) {
+      logger.error('OpenAI failed to generate reply:', {
+        ticketId,
+        response: openAIResponse
+      });
+      throw new ApiError(500, 'Failed to generate reply');
+    }
+
     logger.info('Reply generated successfully', {
       ticketId,
-      replyLength: result.reply?.length || 0
+      replyLength: openAIResponse.reply.length,
+      processingTime: Date.now() - startTime
     });
 
+    // Send successful response
     res.json({
       success: true,
       ticketId,
-      generatedReply: result.reply
+      generatedReply: openAIResponse.reply
     });
 
   } catch (error) {
     logger.error('Error generating ticket reply', {
-      ticketId: req.params.ticketId,
+      ticketId,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
+      processingTime: Date.now() - startTime
     });
+
+    // If it's not already an ApiError, convert it
+    if (!(error instanceof ApiError)) {
+      error = new ApiError(
+        500,
+        'Error generating reply: ' + (error.message || 'Unknown error')
+      );
+    }
+
     next(error);
   }
 };
