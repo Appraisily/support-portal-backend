@@ -270,4 +270,5 @@ class TicketService {
   }
 }
 
-module.exports = new TicketService();
+// Export the class instead of an instance
+module.exports = TicketService;
