@@ -83,8 +83,7 @@ Ticket information:
 
     logger.debug('Filtered conversation messages', {
       originalCount: messages.length,
-      filteredCount: validMessages.length,
-      messages: validMessages
+      filteredCount: validMessages.length
     });
 
     return [systemPrompt, ...validMessages];
@@ -104,8 +103,7 @@ Ticket information:
 
       logger.info('Formatted messages for OpenAI:', {
         ticketId: ticket.id,
-        messageCount: formattedMessages.length,
-        messages: formattedMessages
+        messageCount: formattedMessages.length
       });
 
       const completion = await this.client.chat.completions.create({
@@ -122,19 +120,7 @@ Ticket information:
       logger.info('OpenAI generated reply:', {
         ticketId: ticket.id,
         replyLength: generatedReply.length,
-        reply: generatedReply,
-        usage: completion.usage
-      });
-
-      // Log full response details for debugging
-      logger.debug('Full OpenAI response:', {
-        ticketId: ticket.id,
-        completion: {
-          id: completion.id,
-          model: completion.model,
-          choices: completion.choices,
-          usage: completion.usage
-        }
+        reply: generatedReply
       });
 
       return {

@@ -39,7 +39,7 @@ class SheetsService {
         this.appraisalsSpreadsheetId
       ] = await Promise.all([
         secretManager.getSecret('SALES_SPREADSHEET_ID'),
-        secretManager.getSecret('PENDING_APPRAISALS_SPREADSHEET_ID') // This ID is used for both sheets
+        secretManager.getSecret('PENDING_APPRAISALS_SPREADSHEET_ID')
       ]);
 
       if (!this.salesSpreadsheetId || !this.appraisalsSpreadsheetId) {
@@ -163,36 +163,36 @@ class SheetsService {
         }))
         .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-      // Get both pending and completed appraisals from the same spreadsheet
-      const [pendingResponse, completedResponse] = await Promise.all([
-        this.sheets.spreadsheets.values.get({
-          spreadsheetId: this.appraisalsSpreadsheetId,
-          range: 'Pending Appraisals!A2:O',
-          valueRenderOption: 'UNFORMATTED_VALUE'
-        }).catch(error => {
-          logger.error('Error fetching pending appraisals:', {
-            error: error.message,
-            spreadsheetId: this.appraisalsSpreadsheetId
-          });
-          return { data: { values: [] } };
-        }),
-        this.sheets.spreadsheets.values.get({
-          spreadsheetId: this.appraisalsSpreadsheetId,
-          range: 'Completed Appraisals!A2:O',
-          valueRenderOption: 'UNFORMATTED_VALUE'
-        }).catch(error => {
-          logger.error('Error fetching completed appraisals:', {
-            error: error.message,
-            spreadsheetId: this.appraisalsSpreadsheetId
-          });
-          return { data: { values: [] } };
-        })
-      ]);
+      // Get pending appraisals
+      const pendingResponse = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.appraisalsSpreadsheetId,
+        range: "'Pending Appraisals'!A2:O",
+        valueRenderOption: 'UNFORMATTED_VALUE'
+      }).catch(error => {
+        logger.error('Error fetching pending appraisals:', {
+          error: error.message,
+          spreadsheetId: this.appraisalsSpreadsheetId
+        });
+        return { data: { values: [] } };
+      });
+
+      // Get completed appraisals
+      const completedResponse = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.appraisalsSpreadsheetId,
+        range: "'Completed Appraisals'!A2:O",
+        valueRenderOption: 'UNFORMATTED_VALUE'
+      }).catch(error => {
+        logger.error('Error fetching completed appraisals:', {
+          error: error.message,
+          spreadsheetId: this.appraisalsSpreadsheetId
+        });
+        return { data: { values: [] } };
+      });
 
       // Process pending appraisals
       const pendingRows = pendingResponse.data.values || [];
       const pendingAppraisals = pendingRows
-        .filter(row => row[3]?.toString().toLowerCase() === normalizedEmail) // Column D is Customer Email
+        .filter(row => row[3]?.toString().toLowerCase() === normalizedEmail)
         .map(row => ({
           date: row[0],
           serviceType: row[1],
@@ -207,7 +207,7 @@ class SheetsService {
       // Process completed appraisals
       const completedRows = completedResponse.data.values || [];
       const completedAppraisals = completedRows
-        .filter(row => row[3]?.toString().toLowerCase() === normalizedEmail) // Column D is Customer Email
+        .filter(row => row[3]?.toString().toLowerCase() === normalizedEmail)
         .map(row => ({
           date: row[0],
           serviceType: row[1],
