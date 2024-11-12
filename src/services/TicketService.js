@@ -60,6 +60,78 @@ class TicketService {
     }
   }
 
+  async updateTicket(id, updates) {
+    await this.ensureInitialized();
+
+    const transaction = await this.sequelize.transaction();
+
+    try {
+      const ticket = await this.models.Ticket.findByPk(id, { transaction });
+      
+      if (!ticket) {
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      // Map frontend status to database status if provided
+      if (updates.status) {
+        updates.status = STATUS_MAPPING[updates.status] || updates.status;
+      }
+
+      // Update the ticket
+      await ticket.update(updates, { transaction });
+
+      // Get updated ticket with associations
+      const updatedTicket = await this.models.Ticket.findByPk(id, {
+        include: [
+          {
+            model: this.models.Customer,
+            as: 'customer',
+            attributes: ['id', 'name', 'email']
+          },
+          {
+            model: this.models.User,
+            as: 'assignedTo',
+            attributes: ['id', 'name', 'email']
+          }
+        ],
+        transaction
+      });
+
+      await transaction.commit();
+
+      // Format response
+      return {
+        id: updatedTicket.id,
+        subject: updatedTicket.subject,
+        status: REVERSE_STATUS_MAPPING[updatedTicket.status] || updatedTicket.status,
+        priority: updatedTicket.priority,
+        category: updatedTicket.category,
+        customer: updatedTicket.customer ? {
+          id: updatedTicket.customer.id,
+          name: updatedTicket.customer.name,
+          email: updatedTicket.customer.email
+        } : null,
+        assignedTo: updatedTicket.assignedTo ? {
+          id: updatedTicket.assignedTo.id,
+          name: updatedTicket.assignedTo.name,
+          email: updatedTicket.assignedTo.email
+        } : null,
+        lastMessageAt: updatedTicket.lastMessageAt,
+        updatedAt: updatedTicket.updatedAt
+      };
+
+    } catch (error) {
+      await transaction.rollback();
+      logger.error('Error updating ticket:', {
+        error: error.message,
+        ticketId: id,
+        updates,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
   async listTickets({ status, priority, sort = 'lastMessageAt', order = 'desc' }, { page = 1, limit = 10 }) {
     await this.ensureInitialized();
 
@@ -121,13 +193,6 @@ class TicketService {
         createdAt: ticket.createdAt
       }));
 
-      logger.info('Tickets retrieved successfully', {
-        totalCount: count,
-        pageCount: tickets.length,
-        page: pageInt,
-        limit: limitInt
-      });
-
       return {
         tickets,
         pagination: {
@@ -153,8 +218,6 @@ class TicketService {
     await this.ensureInitialized();
     
     try {
-      logger.info('Fetching ticket with messages', { ticketId: id });
-
       const ticket = await this.models.Ticket.findByPk(id, {
         include: [
           {
@@ -179,48 +242,27 @@ class TicketService {
       });
 
       if (!ticket) {
-        logger.warn('Ticket not found', { ticketId: id });
         throw new ApiError(404, 'Ticket not found');
       }
 
-      logger.info('Retrieved ticket with messages', {
-        ticketId: id,
-        messageCount: ticket.messages?.length || 0,
-        hasCustomer: !!ticket.customer
-      });
-
       // Format messages
-      const formattedMessages = ticket.messages.map(message => {
-        const formatted = {
-          id: message.id,
-          content: message.content,
-          direction: message.direction,
-          createdAt: message.createdAt,
-          attachments: message.attachments?.map(attachment => ({
-            id: attachment.id,
-            name: attachment.filename,
-            url: attachment.url
-          })) || []
-        };
-
-        logger.debug('Formatted message', {
-          messageId: message.id,
-          direction: message.direction,
-          attachmentCount: formatted.attachments.length
-        });
-
-        return formatted;
-      });
+      const formattedMessages = ticket.messages.map(message => ({
+        id: message.id,
+        content: message.content,
+        direction: message.direction,
+        createdAt: message.createdAt,
+        attachments: message.attachments?.map(attachment => ({
+          id: attachment.id,
+          name: attachment.filename,
+          url: attachment.url
+        })) || []
+      }));
 
       // Get customer info from sheets if available
       let customerInfo = null;
       if (ticket.customer?.email) {
         try {
           customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
-          logger.info('Retrieved customer info', {
-            customerEmail: ticket.customer.email,
-            hasInfo: !!customerInfo
-          });
         } catch (error) {
           logger.warn('Could not fetch customer info:', {
             error: error.message,
@@ -229,7 +271,7 @@ class TicketService {
         }
       }
 
-      const response = {
+      return {
         success: true,
         data: {
           id: ticket.id,
@@ -246,18 +288,10 @@ class TicketService {
           customerInfo,
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt,
-          lastMessageAt: ticket.lastMessageAt
+          lastMessageAt: ticket.lastMessageAt,
+          gmailThreadId: ticket.gmailThreadId
         }
       };
-
-      logger.info('Sending ticket response', {
-        ticketId: id,
-        messageCount: formattedMessages.length,
-        status: response.data.status,
-        hasCustomerInfo: !!customerInfo
-      });
-
-      return response;
 
     } catch (error) {
       logger.error('Error getting ticket:', {
@@ -268,7 +302,77 @@ class TicketService {
       throw error;
     }
   }
+
+  async addReply(ticketId, { content, direction = 'outbound', userId = null, attachments = [] }) {
+    await this.ensureInitialized();
+
+    const transaction = await this.sequelize.transaction();
+
+    try {
+      // Get ticket to ensure it exists
+      const ticket = await this.models.Ticket.findByPk(ticketId, {
+        include: [{ model: this.models.Customer, as: 'customer' }],
+        transaction
+      });
+
+      if (!ticket) {
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      // Create message
+      const message = await this.models.Message.create({
+        ticketId,
+        content,
+        direction,
+        userId,
+        customerId: ticket.customer?.id
+      }, { transaction });
+
+      // Handle attachments if any
+      if (attachments.length > 0) {
+        await message.setAttachments(attachments, { transaction });
+      }
+
+      // Update ticket's lastMessageAt
+      await ticket.update({
+        lastMessageAt: new Date()
+      }, { transaction });
+
+      await transaction.commit();
+
+      // Return formatted message
+      const createdMessage = await this.models.Message.findByPk(message.id, {
+        include: [{
+          model: this.models.Attachment,
+          as: 'attachments',
+          through: { attributes: [] }
+        }],
+        transaction: null // Use a new transaction
+      });
+
+      return {
+        id: createdMessage.id,
+        content: createdMessage.content,
+        direction: createdMessage.direction,
+        createdAt: createdMessage.createdAt,
+        attachments: createdMessage.attachments?.map(attachment => ({
+          id: attachment.id,
+          name: attachment.filename,
+          url: attachment.url
+        })) || []
+      };
+
+    } catch (error) {
+      await transaction.rollback();
+      logger.error('Error adding reply:', {
+        error: error.message,
+        ticketId,
+        direction,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
 }
 
-// Export the class instead of an instance
 module.exports = TicketService;
