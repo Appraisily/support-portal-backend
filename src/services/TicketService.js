@@ -60,6 +60,95 @@ class TicketService {
     }
   }
 
+  async listTickets({ status, priority, sort = 'lastMessageAt', order = 'desc' }, { page = 1, limit = 10 }) {
+    await this.ensureInitialized();
+
+    try {
+      const where = {};
+      
+      // Map frontend status to database status
+      if (status) {
+        where.status = STATUS_MAPPING[status] || status;
+      }
+      
+      if (priority) {
+        where.priority = priority;
+      }
+
+      // Convert page/limit to integers
+      const pageInt = parseInt(page, 10);
+      const limitInt = parseInt(limit, 10);
+      const offset = (pageInt - 1) * limitInt;
+
+      // Get tickets with count
+      const { count, rows } = await this.models.Ticket.findAndCountAll({
+        where,
+        include: [
+          {
+            model: this.models.Customer,
+            as: 'customer',
+            attributes: ['id', 'name', 'email']
+          },
+          {
+            model: this.models.User,
+            as: 'assignedTo',
+            attributes: ['id', 'name', 'email']
+          }
+        ],
+        order: [[sort, order.toUpperCase()]],
+        limit: limitInt,
+        offset
+      });
+
+      // Format tickets for response
+      const tickets = rows.map(ticket => ({
+        id: ticket.id,
+        subject: ticket.subject,
+        status: REVERSE_STATUS_MAPPING[ticket.status] || ticket.status,
+        priority: ticket.priority,
+        category: ticket.category,
+        customer: ticket.customer ? {
+          id: ticket.customer.id,
+          name: ticket.customer.name,
+          email: ticket.customer.email
+        } : null,
+        assignedTo: ticket.assignedTo ? {
+          id: ticket.assignedTo.id,
+          name: ticket.assignedTo.name,
+          email: ticket.assignedTo.email
+        } : null,
+        lastMessageAt: ticket.lastMessageAt,
+        createdAt: ticket.createdAt
+      }));
+
+      logger.info('Tickets retrieved successfully', {
+        totalCount: count,
+        pageCount: tickets.length,
+        page: pageInt,
+        limit: limitInt
+      });
+
+      return {
+        tickets,
+        pagination: {
+          total: count,
+          page: pageInt,
+          limit: limitInt,
+          totalPages: Math.ceil(count / limitInt)
+        }
+      };
+
+    } catch (error) {
+      logger.error('Error listing tickets:', {
+        error: error.message,
+        stack: error.stack,
+        filters: { status, priority, sort, order },
+        pagination: { page, limit }
+      });
+      throw error;
+    }
+  }
+
   async getTicketById(id) {
     await this.ensureInitialized();
     
@@ -179,8 +268,6 @@ class TicketService {
       throw error;
     }
   }
-
-  // ... rest of the service methods remain the same ...
 }
 
 module.exports = new TicketService();
