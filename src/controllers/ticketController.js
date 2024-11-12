@@ -17,6 +17,7 @@ exports.listTickets = async (req, res, next) => {
     });
 
     await ticketService.ensureInitialized();
+
     const result = await ticketService.listTickets(
       { status, priority, sort: sortBy, order: sortOrder },
       { page, limit }
@@ -41,11 +42,12 @@ exports.listTickets = async (req, res, next) => {
 
 exports.getTicket = async (req, res, next) => {
   try {
+    await ticketService.ensureInitialized();
+
     logger.info('Getting ticket details', {
       ticketId: req.params.id
     });
 
-    await ticketService.ensureInitialized();
     const response = await ticketService.getTicketById(req.params.id);
     res.json(response);
   } catch (error) {
@@ -59,13 +61,14 @@ exports.getTicket = async (req, res, next) => {
 
 exports.createTicket = async (req, res, next) => {
   try {
+    await ticketService.ensureInitialized();
+
     logger.info('Creating new ticket', {
       subject: req.body.subject,
       category: req.body.category,
       customerId: req.body.customerId
     });
 
-    await ticketService.ensureInitialized();
     const ticket = await ticketService.createTicket(req.body);
     
     logger.info('Ticket created successfully', {
@@ -87,6 +90,8 @@ exports.createTicket = async (req, res, next) => {
 
 exports.updateTicket = async (req, res, next) => {
   try {
+    await ticketService.ensureInitialized();
+
     const { id } = req.params;
     
     logger.info('Updating ticket', {
@@ -94,7 +99,6 @@ exports.updateTicket = async (req, res, next) => {
       updates: req.body
     });
 
-    await ticketService.ensureInitialized();
     const ticket = await ticketService.updateTicket(id, req.body);
     
     logger.info('Ticket updated successfully', {
@@ -117,33 +121,34 @@ exports.updateTicket = async (req, res, next) => {
 
 exports.replyToTicket = async (req, res, next) => {
   try {
+    await ticketService.ensureInitialized();
+
     const ticketId = req.params.id;
+    const { content, direction = 'outbound' } = req.body;
     
     logger.info('Adding reply to ticket', {
       ticketId,
-      direction: req.body.direction || 'outbound'
+      direction,
+      userId: req.user?.id
     });
 
-    await ticketService.ensureInitialized();
-
-    // Get the ticket to get customer email and thread ID
+    // Get the ticket first to get customer email and thread ID
     const ticketResponse = await ticketService.getTicketById(ticketId);
     const ticket = ticketResponse.data;
-    
-    // Create the reply in the database
+
+    // Create the reply in the database - Note: userId is optional
     const reply = await ticketService.addReply(ticketId, {
-      content: req.body.content,
-      direction: req.body.direction || 'outbound',
-      userId: req.user.id,
-      attachments: req.body.attachments
+      content,
+      direction,
+      attachments: req.body.attachments || []
     });
 
-    // Send the email reply if it's an outbound message
-    if (req.body.direction !== 'inbound' && ticket.customer?.email) {
+    // Send email reply if it's outbound
+    if (direction === 'outbound' && ticket.customer?.email) {
       await GmailService.sendEmail(
         ticket.customer.email,
         `Re: ${ticket.subject}`,
-        req.body.content,
+        content,
         ticket.gmailThreadId
       );
 

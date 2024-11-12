@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -12,15 +11,16 @@ const app = express();
 
 // CORS configuration
 const corsOptions = {
-  origin: '*', // In production, replace with your frontend domain
+  origin: true, // Reflects the request origin. In production, set to your frontend domain
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  credentials: true,
+  maxAge: 86400 // 24 hours
 };
 
 // Middleware
-app.use(cors(corsOptions));
 app.use(helmet());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Routes

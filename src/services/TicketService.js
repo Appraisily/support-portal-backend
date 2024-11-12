@@ -1,7 +1,7 @@
-const { Sequelize } = require('sequelize');
 const logger = require('../utils/logger');
-const ApiError = require('../utils/apiError');
 const { initializeDatabase } = require('../config/database');
+const ApiError = require('../utils/apiError');
+const { Op } = require('sequelize');
 
 class TicketService {
   constructor() {
@@ -45,6 +45,14 @@ class TicketService {
       const where = {};
       if (status) where.status = status;
       if (priority) where.priority = priority;
+
+      logger.debug('Listing tickets with query:', {
+        where,
+        sort,
+        order,
+        page,
+        limit
+      });
 
       const { rows: tickets, count } = await this.models.Ticket.findAndCountAll({
         where,
@@ -116,30 +124,11 @@ class TicketService {
         throw new ApiError(404, 'Ticket not found');
       }
 
-      const formattedMessages = ticket.messages.map(message => ({
-        id: message.id,
-        content: message.content,
-        direction: message.direction,
-        createdAt: message.createdAt,
-        attachments: message.attachments?.map(attachment => ({
-          id: attachment.id,
-          name: attachment.filename,
-          url: attachment.url
-        })) || []
-      }));
-
-      // Log all dates for debugging
-      logger.info('Ticket dates being sent to frontend:', {
-        ticketId: ticket.id,
-        ticketDates: {
-          createdAt: ticket.createdAt,
-          updatedAt: ticket.updatedAt,
-          lastMessageAt: ticket.lastMessageAt
-        },
-        messageDates: formattedMessages.map(msg => ({
-          messageId: msg.id,
-          createdAt: msg.createdAt
-        }))
+      logger.info('Ticket dates:', {
+        ticketId: id,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        lastMessageAt: ticket.lastMessageAt
       });
 
       return {
@@ -150,19 +139,23 @@ class TicketService {
           status: ticket.status,
           priority: ticket.priority,
           category: ticket.category,
-          customer: ticket.customer ? {
-            id: ticket.customer.id,
-            name: ticket.customer.name,
-            email: ticket.customer.email
-          } : null,
-          messages: formattedMessages,
+          customer: ticket.customer,
+          messages: ticket.messages.map(msg => ({
+            id: msg.id,
+            content: msg.content,
+            direction: msg.direction,
+            createdAt: msg.createdAt,
+            attachments: msg.attachments?.map(att => ({
+              id: att.id,
+              name: att.filename,
+              url: att.url
+            })) || []
+          })),
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt,
-          lastMessageAt: ticket.lastMessageAt,
-          gmailThreadId: ticket.gmailThreadId
+          lastMessageAt: ticket.lastMessageAt
         }
       };
-
     } catch (error) {
       logger.error('Error getting ticket:', {
         error: error.message,
@@ -172,64 +165,16 @@ class TicketService {
     }
   }
 
-  async createTicket(data) {
-    await this.ensureInitialized();
-
-    try {
-      const ticket = await this.models.Ticket.create(data);
-      
-      logger.info('Ticket created successfully', {
-        ticketId: ticket.id,
-        subject: ticket.subject
-      });
-
-      return ticket;
-    } catch (error) {
-      logger.error('Error creating ticket:', {
-        error: error.message,
-        data
-      });
-      throw error;
-    }
-  }
-
-  async updateTicket(id, updates) {
-    await this.ensureInitialized();
-
-    try {
-      const ticket = await this.models.Ticket.findByPk(id);
-      
-      if (!ticket) {
-        throw new ApiError(404, 'Ticket not found');
-      }
-
-      await ticket.update(updates);
-
-      logger.info('Ticket updated successfully', {
-        ticketId: id,
-        updates
-      });
-
-      return ticket;
-    } catch (error) {
-      logger.error('Error updating ticket:', {
-        error: error.message,
-        ticketId: id,
-        updates
-      });
-      throw error;
-    }
-  }
-
   async addReply(ticketId, { content, direction, userId, attachments = [] }) {
     await this.ensureInitialized();
 
     try {
-      const ticket = await this.models.Ticket.findByPk(ticketId);
-      
-      if (!ticket) {
-        throw new ApiError(404, 'Ticket not found');
-      }
+      logger.info('Adding reply to ticket', {
+        ticketId,
+        direction,
+        userId,
+        hasAttachments: attachments.length > 0
+      });
 
       const message = await this.models.Message.create({
         ticketId,
@@ -243,23 +188,38 @@ class TicketService {
       }
 
       // Update ticket's lastMessageAt
-      await ticket.update({
-        lastMessageAt: new Date()
-      });
-
-      logger.info('Reply added successfully', {
-        ticketId,
-        messageId: message.id,
-        direction
-      });
+      await this.models.Ticket.update(
+        { lastMessageAt: new Date() },
+        { where: { id: ticketId } }
+      );
 
       return message;
     } catch (error) {
       logger.error('Error adding reply:', {
         error: error.message,
         ticketId,
-        direction,
-        stack: error.stack
+        direction
+      });
+      throw error;
+    }
+  }
+
+  async updateTicket(id, updates) {
+    await this.ensureInitialized();
+
+    try {
+      const ticket = await this.models.Ticket.findByPk(id);
+      if (!ticket) {
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      await ticket.update(updates);
+      return ticket;
+    } catch (error) {
+      logger.error('Error updating ticket:', {
+        error: error.message,
+        ticketId: id,
+        updates
       });
       throw error;
     }
