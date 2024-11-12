@@ -26,14 +26,13 @@ class SheetsService {
         error: error.message,
         stack: error.stack
       });
-      // Don't throw, allow service to continue with limited functionality
       this.initialized = true;
     }
   }
 
   async _initialize() {
     try {
-      // Get spreadsheet IDs from Secret Manager
+      // Get spreadsheet IDs from Secret Manager and clean them
       [
         this.salesSpreadsheetId,
         this.appraisalsSpreadsheetId
@@ -41,6 +40,10 @@ class SheetsService {
         secretManager.getSecret('SALES_SPREADSHEET_ID'),
         secretManager.getSecret('PENDING_APPRAISALS_SPREADSHEET_ID')
       ]);
+
+      // Clean spreadsheet IDs (remove any whitespace or newlines)
+      this.salesSpreadsheetId = this.salesSpreadsheetId?.trim();
+      this.appraisalsSpreadsheetId = this.appraisalsSpreadsheetId?.trim();
 
       if (!this.salesSpreadsheetId || !this.appraisalsSpreadsheetId) {
         logger.error('Missing spreadsheet IDs');
@@ -59,9 +62,6 @@ class SheetsService {
         auth: this.auth 
       });
 
-      // Verify access to spreadsheets
-      await this._verifyAccess();
-
       logger.info('Sheets service initialized successfully', {
         salesSpreadsheetId: this.salesSpreadsheetId,
         appraisalsSpreadsheetId: this.appraisalsSpreadsheetId
@@ -71,55 +71,6 @@ class SheetsService {
         error: error.message,
         stack: error.stack,
         projectId: process.env.GOOGLE_CLOUD_PROJECT_ID
-      });
-      throw error;
-    }
-  }
-
-  async _verifyAccess() {
-    try {
-      // Try to access both spreadsheets to verify permissions
-      const [salesResponse, appraisalsResponse] = await Promise.allSettled([
-        this.sheets.spreadsheets.get({
-          spreadsheetId: this.salesSpreadsheetId,
-          fields: 'spreadsheetId,properties.title'
-        }),
-        this.sheets.spreadsheets.get({
-          spreadsheetId: this.appraisalsSpreadsheetId,
-          fields: 'spreadsheetId,properties.title,sheets.properties.title'
-        })
-      ]);
-
-      // Log access verification results
-      logger.info('Spreadsheet access verification:', {
-        sales: salesResponse.status === 'fulfilled' ? 'success' : 'failed',
-        appraisals: appraisalsResponse.status === 'fulfilled' ? 'success' : 'failed',
-        salesError: salesResponse.status === 'rejected' ? salesResponse.reason.message : null,
-        appraisalsError: appraisalsResponse.status === 'rejected' ? appraisalsResponse.reason.message : null
-      });
-
-      if (salesResponse.status === 'rejected' || appraisalsResponse.status === 'rejected') {
-        throw new Error('Failed to verify access to spreadsheets');
-      }
-
-      // Verify that both required sheets exist in the appraisals spreadsheet
-      if (appraisalsResponse.status === 'fulfilled') {
-        const sheets = appraisalsResponse.value.data.sheets || [];
-        const sheetTitles = sheets.map(sheet => sheet.properties.title);
-        
-        if (!sheetTitles.includes('Pending Appraisals') || !sheetTitles.includes('Completed Appraisals')) {
-          logger.error('Missing required sheets in appraisals spreadsheet', {
-            availableSheets: sheetTitles,
-            requiredSheets: ['Pending Appraisals', 'Completed Appraisals']
-          });
-          throw new Error('Required sheets not found in appraisals spreadsheet');
-        }
-      }
-    } catch (error) {
-      logger.error('Spreadsheet access verification failed:', {
-        error: error.message,
-        salesSpreadsheetId: this.salesSpreadsheetId,
-        appraisalsSpreadsheetId: this.appraisalsSpreadsheetId
       });
       throw error;
     }
@@ -168,28 +119,9 @@ class SheetsService {
         spreadsheetId: this.appraisalsSpreadsheetId,
         range: "'Pending Appraisals'!A2:O",
         valueRenderOption: 'UNFORMATTED_VALUE'
-      }).catch(error => {
-        logger.error('Error fetching pending appraisals:', {
-          error: error.message,
-          spreadsheetId: this.appraisalsSpreadsheetId
-        });
-        return { data: { values: [] } };
       });
 
-      // Get completed appraisals
-      const completedResponse = await this.sheets.spreadsheets.values.get({
-        spreadsheetId: this.appraisalsSpreadsheetId,
-        range: "'Completed Appraisals'!A2:O",
-        valueRenderOption: 'UNFORMATTED_VALUE'
-      }).catch(error => {
-        logger.error('Error fetching completed appraisals:', {
-          error: error.message,
-          spreadsheetId: this.appraisalsSpreadsheetId
-        });
-        return { data: { values: [] } };
-      });
-
-      // Process pending appraisals
+      // Process pending appraisals - Column D (index 3) is Customer Email
       const pendingRows = pendingResponse.data.values || [];
       const pendingAppraisals = pendingRows
         .filter(row => row[3]?.toString().toLowerCase() === normalizedEmail)
@@ -204,7 +136,14 @@ class SheetsService {
           value: row[9]
         }));
 
-      // Process completed appraisals
+      // Get completed appraisals
+      const completedResponse = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.appraisalsSpreadsheetId,
+        range: "'Completed Appraisals'!A2:O",
+        valueRenderOption: 'UNFORMATTED_VALUE'
+      });
+
+      // Process completed appraisals - Column D (index 3) is Customer Email
       const completedRows = completedResponse.data.values || [];
       const completedAppraisals = completedRows
         .filter(row => row[3]?.toString().toLowerCase() === normalizedEmail)

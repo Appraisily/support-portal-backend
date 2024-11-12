@@ -26,7 +26,7 @@ exports.generateTicketReply = async (req, res, next) => {
         logger.info('Retrieved customer info:', {
           ticketId,
           customerEmail: ticket.customer.email,
-          customerInfo
+          hasCustomerInfo: !!customerInfo
         });
       } catch (error) {
         logger.warn('Could not fetch customer info from sheets', {
@@ -51,7 +51,7 @@ exports.generateTicketReply = async (req, res, next) => {
 
     logger.info('Reply generated successfully', {
       ticketId,
-      replyLength: result.reply.length
+      replyLength: result.reply?.length || 0
     });
 
     res.json({
