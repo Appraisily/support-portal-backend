@@ -12,7 +12,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: 'Messages',
+        model: 'messages',
         key: 'id'
       },
       primaryKey: true
@@ -21,7 +21,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: 'Attachments',
+        model: 'attachments',
         key: 'id'
       },
       primaryKey: true
