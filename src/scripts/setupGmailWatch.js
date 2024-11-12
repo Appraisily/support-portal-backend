@@ -3,33 +3,15 @@ const GmailService = require('../services/GmailService');
 
 async function setup() {
   const startTime = Date.now();
-  let gmailService = null;
 
   try {
-    // Validar variables de entorno primero
-    const requiredEnvVars = [
-      'GMAIL_CLIENT_ID',
-      'GMAIL_CLIENT_SECRET',
-      'GMAIL_REFRESH_TOKEN',
-      'GOOGLE_CLOUD_PROJECT_ID',
-      'GMAIL_USER_EMAIL'
-    ];
+    logger.info('Starting Gmail watch setup');
 
-    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
-    if (missingVars.length > 0) {
-      throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
-    }
-
-    // Inicializar el servicio
-    gmailService = new GmailService();
-    await gmailService.ensureInitialized();
-
-    // Configurar el watch
-    const watchResult = await gmailService.setupGmailWatch();
+    const watchResult = await GmailService.setupGmailWatch();
 
     logger.info('Gmail watch setup completed', {
-      historyId: gmailService.lastHistoryId,
-      watchResult,
+      historyId: watchResult.historyId,
+      expiration: watchResult.expiration,
       setupTime: Date.now() - startTime
     });
 
@@ -44,7 +26,7 @@ async function setup() {
   }
 }
 
-// Manejar errores no capturados
+// Handle unhandled rejections
 process.on('unhandledRejection', (error) => {
   logger.error('Unhandled rejection in Gmail setup', {
     error: error.message,
@@ -53,4 +35,4 @@ process.on('unhandledRejection', (error) => {
   process.exit(1);
 });
 
-setup(); 
+setup();

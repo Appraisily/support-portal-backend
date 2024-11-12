@@ -3,7 +3,7 @@ const logger = require('./logger');
 
 class SecretManager {
   constructor() {
-    this.client = new SecretManagerServiceClient();
+    this.client = null;
     this.secrets = new Map();
     this.initialized = false;
     this.initPromise = null;
@@ -12,14 +12,14 @@ class SecretManager {
       'DB_PASSWORD',
       'DB_NAME',
       'jwt-secret',
-      'ADMIN_EMAIL',
-      'ADMIN_PASSWORD',
       'OPENAI_API_KEY',
       'SALES_SPREADSHEET_ID',
       'PENDING_APPRAISALS_SPREADSHEET_ID',
       'GMAIL_CLIENT_ID',
       'GMAIL_CLIENT_SECRET',
-      'GMAIL_REFRESH_TOKEN'
+      'GMAIL_REFRESH_TOKEN',
+      'ADMIN_EMAIL',
+      'ADMIN_PASSWORD'
     ];
   }
 
@@ -50,13 +50,40 @@ class SecretManager {
     try {
       logger.info('Starting secrets loading process');
 
+      // In development, use environment variables
+      if (process.env.NODE_ENV !== 'production') {
+        this.requiredSecrets.forEach(secretName => {
+          if (process.env[secretName]) {
+            this.secrets.set(secretName, process.env[secretName]);
+          }
+        });
+
+        // For development, set some default values
+        if (!this.secrets.has('ADMIN_EMAIL')) {
+          this.secrets.set('ADMIN_EMAIL', 'admin@appraisily.com');
+        }
+        if (!this.secrets.has('ADMIN_PASSWORD')) {
+          this.secrets.set('ADMIN_PASSWORD', 'admin123');
+        }
+        if (!this.secrets.has('jwt-secret')) {
+          this.secrets.set('jwt-secret', 'dev-secret-key');
+        }
+
+        logger.info('Using development environment variables');
+        return true;
+      }
+
+      // Production: Initialize Secret Manager client
+      if (!this.client) {
+        this.client = new SecretManagerServiceClient();
+      }
+
       // Load secrets in parallel
       const results = await Promise.all(
         this.requiredSecrets.map(async (secretName) => {
           try {
             // First check environment variables
             if (process.env[secretName]) {
-              logger.info(`Using ${secretName} from environment variables`);
               this.secrets.set(secretName, process.env[secretName]);
               return { secretName, success: true, source: 'env' };
             }
@@ -68,15 +95,8 @@ class SecretManager {
 
             const value = version.payload.data.toString();
             this.secrets.set(secretName, value);
+            process.env[secretName] = value;
             
-            // Set environment variable - handle special case for jwt-secret
-            if (secretName === 'jwt-secret') {
-              process.env.JWT_SECRET = value;
-            } else {
-              process.env[secretName] = value;
-            }
-            
-            logger.info(`Loaded ${secretName} from Secret Manager`);
             return { secretName, success: true, source: 'secret-manager' };
           } catch (error) {
             logger.error(`Failed to load secret ${secretName}:`, {
@@ -97,7 +117,12 @@ class SecretManager {
         failed: failed.length
       });
 
-      // Verify all required secrets are loaded
+      // In development, we can continue with missing secrets
+      if (process.env.NODE_ENV !== 'production') {
+        return true;
+      }
+
+      // In production, verify all required secrets are loaded
       const missingSecrets = this.requiredSecrets.filter(
         secret => !this.secrets.has(secret) && !process.env[secret]
       );
@@ -115,7 +140,7 @@ class SecretManager {
         error: error.message,
         stack: error.stack
       });
-      return false;
+      return process.env.NODE_ENV !== 'production';
     }
   }
 }

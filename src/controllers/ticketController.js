@@ -1,22 +1,20 @@
-const ticketService = require('../services/TicketService');
-const gmailService = require('../services/GmailService');
+const TicketService = require('../services/TicketService');
+const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
 
 exports.listTickets = async (req, res, next) => {
   try {
-    await ticketService.ensureInitialized();
-    
-    const { status, priority, page, limit, sort, order } = req.query;
+    const { status, priority, page, limit, sortBy, sortOrder } = req.query;
 
     logger.info('Listing tickets request:', {
       filters: { status, priority },
       pagination: { page, limit },
-      sorting: { sort, order },
+      sorting: { sortBy, sortOrder },
       userId: req.user?.id
     });
 
-    const result = await ticketService.listTickets(
-      { status, priority, sort, order },
+    const result = await TicketService.listTickets(
+      { status, priority, sort: sortBy, order: sortOrder },
       { page, limit }
     );
 
@@ -43,8 +41,8 @@ exports.getTicket = async (req, res, next) => {
       ticketId: req.params.id
     });
 
-    const response = await ticketService.getTicketById(req.params.id);
-    res.json(response); // Response is already formatted in the service
+    const response = await TicketService.getTicketById(req.params.id);
+    res.json(response);
   } catch (error) {
     logger.error('Error getting ticket', {
       ticketId: req.params.id,
@@ -62,7 +60,7 @@ exports.createTicket = async (req, res, next) => {
       customerId: req.body.customerId
     });
 
-    const ticket = await ticketService.createTicket(req.body);
+    const ticket = await TicketService.createTicket(req.body);
     
     logger.info('Ticket created successfully', {
       ticketId: ticket.id
@@ -90,7 +88,7 @@ exports.updateTicket = async (req, res, next) => {
       updates: req.body
     });
 
-    const ticket = await ticketService.updateTicket(id, req.body);
+    const ticket = await TicketService.updateTicket(id, req.body);
     
     logger.info('Ticket updated successfully', {
       ticketId: id
@@ -120,11 +118,11 @@ exports.replyToTicket = async (req, res, next) => {
     });
 
     // Get the ticket to get customer email and thread ID
-    const ticketResponse = await ticketService.getTicketById(ticketId);
+    const ticketResponse = await TicketService.getTicketById(ticketId);
     const ticket = ticketResponse.data;
     
     // Create the reply in the database
-    const reply = await ticketService.addReply(ticketId, {
+    const reply = await TicketService.addReply(ticketId, {
       content: req.body.content,
       direction: req.body.direction || 'outbound',
       userId: req.user.id,
@@ -133,7 +131,7 @@ exports.replyToTicket = async (req, res, next) => {
 
     // Send the email reply if it's an outbound message
     if (req.body.direction !== 'inbound' && ticket.customer?.email) {
-      await gmailService.sendEmail(
+      await GmailService.sendEmail(
         ticket.customer.email,
         `Re: ${ticket.subject}`,
         req.body.content,

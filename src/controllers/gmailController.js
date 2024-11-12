@@ -6,9 +6,6 @@ exports.handleWebhook = async (req, res) => {
   const startTime = Date.now();
   
   try {
-    // Ensure Gmail service is initialized
-    await GmailService.ensureInitialized();
-
     // Validate webhook data
     if (!req.body?.message?.data) {
       logger.warn('Invalid webhook data', { 
@@ -38,7 +35,6 @@ exports.handleWebhook = async (req, res) => {
       logger.info('Webhook processing completed', {
         processed: result.processed,
         messages: result.messages?.length || 0,
-        tickets: result.tickets?.length || 0,
         processingTime: Date.now() - startTime
       });
     } catch (processingError) {
@@ -68,7 +64,6 @@ exports.handleWebhook = async (req, res) => {
 
 exports.healthCheck = async (req, res) => {
   try {
-    await GmailService.ensureInitialized();
     const status = await GmailService.getWatchStatus();
     
     res.status(200).json({
