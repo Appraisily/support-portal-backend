@@ -7,15 +7,19 @@ class SecretManager {
     this.secrets = new Map();
     this.initialized = false;
     this.initPromise = null;
-    // Note: jwt-secret is the actual name in Secret Manager (not JWT_SECRET)
     this.requiredSecrets = [
       'DB_USER',
       'DB_PASSWORD',
       'DB_NAME',
-      'jwt-secret',  // This is the correct secret name
+      'jwt-secret',
+      'ADMIN_EMAIL',
+      'ADMIN_PASSWORD',
       'OPENAI_API_KEY',
       'SALES_SPREADSHEET_ID',
-      'PENDING_APPRAISALS_SPREADSHEET_ID'  // Used for both pending and completed sheets
+      'PENDING_APPRAISALS_SPREADSHEET_ID',
+      'GMAIL_CLIENT_ID',
+      'GMAIL_CLIENT_SECRET',
+      'GMAIL_REFRESH_TOKEN'
     ];
   }
 

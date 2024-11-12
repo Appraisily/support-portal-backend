@@ -15,12 +15,14 @@ exports.login = async (req, res, next) => {
 
     logger.info('Login attempt', { email });
 
-    // Get admin credentials from Secret Manager
-    const adminEmail = await secretManager.getSecret('ADMIN_EMAIL');
-    const adminPassword = await secretManager.getSecret('ADMIN_PASSWORD');
-    const jwtSecret = await secretManager.getSecret('jwt-secret');
+    // Get all required secrets
+    const [jwtSecret, adminEmail, adminPassword] = await Promise.all([
+      secretManager.getSecret('jwt-secret'),
+      secretManager.getSecret('ADMIN_EMAIL'),
+      secretManager.getSecret('ADMIN_PASSWORD')
+    ]);
 
-    if (!adminEmail || !adminPassword || !jwtSecret) {
+    if (!jwtSecret || !adminEmail || !adminPassword) {
       logger.error('Missing required secrets for authentication');
       throw new Error('Authentication configuration missing');
     }

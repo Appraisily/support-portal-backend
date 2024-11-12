@@ -23,6 +23,15 @@ const checkGmailConfig = async (req, res, next) => {
         });
       }
     }
+
+    // Email is now an environment variable
+    if (!process.env.GMAIL_USER_EMAIL) {
+      logger.error('Missing Gmail user email configuration');
+      return res.status(503).json({
+        error: 'Gmail service not configured',
+        details: 'Missing GMAIL_USER_EMAIL environment variable'
+      });
+    }
     
     next();
   } catch (error) {
