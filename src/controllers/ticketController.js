@@ -2,6 +2,9 @@ const TicketService = require('../services/TicketService');
 const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
 
+// Create instance of TicketService
+const ticketService = new TicketService();
+
 exports.listTickets = async (req, res, next) => {
   try {
     const { status, priority, page, limit, sortBy, sortOrder } = req.query;
@@ -13,7 +16,8 @@ exports.listTickets = async (req, res, next) => {
       userId: req.user?.id
     });
 
-    const result = await TicketService.listTickets(
+    await ticketService.ensureInitialized();
+    const result = await ticketService.listTickets(
       { status, priority, sort: sortBy, order: sortOrder },
       { page, limit }
     );
@@ -41,7 +45,8 @@ exports.getTicket = async (req, res, next) => {
       ticketId: req.params.id
     });
 
-    const response = await TicketService.getTicketById(req.params.id);
+    await ticketService.ensureInitialized();
+    const response = await ticketService.getTicketById(req.params.id);
     res.json(response);
   } catch (error) {
     logger.error('Error getting ticket', {
@@ -60,7 +65,8 @@ exports.createTicket = async (req, res, next) => {
       customerId: req.body.customerId
     });
 
-    const ticket = await TicketService.createTicket(req.body);
+    await ticketService.ensureInitialized();
+    const ticket = await ticketService.createTicket(req.body);
     
     logger.info('Ticket created successfully', {
       ticketId: ticket.id
@@ -88,7 +94,8 @@ exports.updateTicket = async (req, res, next) => {
       updates: req.body
     });
 
-    const ticket = await TicketService.updateTicket(id, req.body);
+    await ticketService.ensureInitialized();
+    const ticket = await ticketService.updateTicket(id, req.body);
     
     logger.info('Ticket updated successfully', {
       ticketId: id
@@ -117,12 +124,14 @@ exports.replyToTicket = async (req, res, next) => {
       direction: req.body.direction || 'outbound'
     });
 
+    await ticketService.ensureInitialized();
+
     // Get the ticket to get customer email and thread ID
-    const ticketResponse = await TicketService.getTicketById(ticketId);
+    const ticketResponse = await ticketService.getTicketById(ticketId);
     const ticket = ticketResponse.data;
     
     // Create the reply in the database
-    const reply = await TicketService.addReply(ticketId, {
+    const reply = await ticketService.addReply(ticketId, {
       content: req.body.content,
       direction: req.body.direction || 'outbound',
       userId: req.user.id,
