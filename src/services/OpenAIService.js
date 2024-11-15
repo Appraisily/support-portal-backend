@@ -1,174 +1,58 @@
-const { OpenAI } = require('openai');
+const OpenAI = require('openai');
 const logger = require('../utils/logger');
-const secretManager = require('../utils/secretManager');
 const ApiError = require('../utils/apiError');
+const secretManager = require('../utils/secretManager');
 
 class OpenAIService {
   constructor() {
     this.client = null;
     this.initialized = false;
     this.initPromise = null;
-    this.apiKey = null;
-    this.baseURL = 'https://api.openai.com/v1'; // Default OpenAI API URL
+    this.baseURL = 'https://api.openai.com/v1';
+    this.timeout = 60000; // 60 seconds
+    this.maxRetries = 3;
   }
 
   async ensureInitialized() {
-    if (this.initialized && this.client && this.apiKey) {
-      return true;
-    }
-
-    if (this.initPromise) {
-      return this.initPromise;
-    }
+    if (this.initialized) return true;
+    if (this.initPromise) return this.initPromise;
 
     try {
       logger.info('Starting OpenAI initialization');
       this.initPromise = this._initialize();
       await this.initPromise;
+      this.initialized = true;
       return true;
     } catch (error) {
+      this.initPromise = null;
       logger.error('OpenAI initialization failed:', {
         error: error.message,
-        stack: error.stack,
-        baseURL: this.baseURL
+        stack: error.stack
       });
       throw error;
-    } finally {
-      this.initPromise = null;
     }
   }
 
   async _initialize() {
-    try {
-      this.apiKey = await secretManager.getSecret('OPENAI_API_KEY');
-      
-      if (!this.apiKey) {
-        throw new ApiError(503, 'OpenAI API key not configured');
-      }
-
-      logger.info('Retrieved OpenAI API key from Secret Manager');
-
-      // Initialize OpenAI client with appropriate configuration
-      this.client = new OpenAI({
-        apiKey: this.apiKey,
-        baseURL: this.baseURL,
-        maxRetries: 3,
-        timeout: 60000, // 60 second timeout
-        defaultHeaders: {
-          'User-Agent': 'Appraisily/1.0',
-        },
-        defaultQuery: {
-          'api-version': '2023-05-15'
-        }
-      });
-
-      this.initialized = true;
-      logger.info('OpenAI service initialized successfully', {
-        baseURL: this.baseURL,
-        timeout: 60000,
-        maxRetries: 3
-      });
-      return true;
-    } catch (error) {
-      this.client = null;
-      this.initialized = false;
-      this.apiKey = null;
-      throw error;
+    const apiKey = await secretManager.getSecret('OPENAI_API_KEY');
+    if (!apiKey) {
+      throw new Error('OpenAI API key not configured');
     }
-  }
 
-  async generateTicketReply(ticket, messages, customerInfo = null) {
-    try {
-      await this.ensureInitialized();
+    logger.info('Retrieved OpenAI API key from Secret Manager');
 
-      if (!this.client) {
-        throw new ApiError(503, 'OpenAI client not initialized');
-      }
+    this.client = new OpenAI({
+      apiKey: apiKey,
+      baseURL: this.baseURL,
+      timeout: this.timeout,
+      maxRetries: this.maxRetries
+    });
 
-      logger.info('Starting OpenAI reply generation', {
-        ticketId: ticket.id,
-        messageCount: messages.length,
-        hasCustomerInfo: !!customerInfo,
-        baseURL: this.baseURL
-      });
-
-      const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
-
-      // Log the exact prompt being sent
-      logger.info('Sending prompt to OpenAI:', {
-        ticketId: ticket.id,
-        messageCount: formattedMessages.length,
-        systemPrompt: formattedMessages[0].content,
-        messages: formattedMessages.slice(1).map(m => ({
-          role: m.role,
-          contentLength: m.content.length,
-          preview: m.content.substring(0, 100)
-        })),
-        endpoint: `${this.baseURL}/chat/completions`
-      });
-
-      // Make API call with explicit parameters
-      const completion = await this.client.chat.completions.create({
-        model: 'gpt-4',
-        messages: formattedMessages,
-        temperature: 0.7,
-        max_tokens: 500,
-        presence_penalty: 0.6,
-        frequency_penalty: 0.5,
-        user: ticket.id // For OpenAI tracking
-      });
-
-      if (!completion.choices || completion.choices.length === 0) {
-        throw new ApiError(500, 'No response received from OpenAI');
-      }
-
-      const reply = completion.choices[0].message.content;
-
-      logger.info('OpenAI reply generated successfully', {
-        ticketId: ticket.id,
-        replyLength: reply.length,
-        tokenUsage: completion.usage,
-        previewReply: reply.substring(0, 100),
-        responseTime: Date.now() - completion.created * 1000
-      });
-
-      return {
-        success: true,
-        reply
-      };
-
-    } catch (error) {
-      // Check if it's an OpenAI API error
-      const isOpenAIError = error.constructor.name === 'APIError';
-      
-      logger.error('Error generating reply with OpenAI', {
-        ticketId: ticket.id,
-        error: error.message,
-        stack: error.stack,
-        isTimeout: error.message.includes('timed out'),
-        isRateLimitError: error.message.includes('rate limit'),
-        isAuthError: error.message.includes('authentication'),
-        isOpenAIError,
-        status: error.status,
-        type: error.type,
-        code: error.code,
-        param: error.param,
-        baseURL: this.baseURL
-      });
-
-      // Convert OpenAI errors to appropriate API errors
-      if (error.message.includes('timed out')) {
-        throw new ApiError(503, 'OpenAI request timed out. Please try again.');
-      } else if (error.message.includes('rate limit')) {
-        throw new ApiError(429, 'OpenAI rate limit exceeded. Please try again later.');
-      } else if (error.message.includes('authentication')) {
-        throw new ApiError(503, 'OpenAI authentication failed. Please check API key.');
-      } else if (isOpenAIError) {
-        throw new ApiError(503, `OpenAI API error: ${error.message}`);
-      }
-
-      throw new ApiError(503, `Error connecting to OpenAI: ${error.message}`);
-    }
+    logger.info('OpenAI service initialized successfully', {
+      baseURL: this.baseURL,
+      timeout: this.timeout,
+      maxRetries: this.maxRetries
+    });
   }
 
   _formatMessagesForOpenAI(ticket, messages, customerInfo) {
@@ -200,10 +84,17 @@ Ticket information:
 - Status: ${ticket.status}`
     };
 
+    // Sort messages by creation date
+    const sortedMessages = [...messages].sort((a, b) => 
+      new Date(a.createdAt) - new Date(b.createdAt)
+    );
+
     // Filter and format messages
-    const validMessages = messages
+    const validMessages = sortedMessages
       .filter(msg => {
         const content = msg.content?.trim();
+        
+        // Skip empty or very short messages
         if (!content || content.length < 3) {
           logger.debug('Skipping invalid message:', {
             messageId: msg.id,
@@ -212,30 +103,110 @@ Ticket information:
           });
           return false;
         }
+
+        // Skip messages that are just signatures or greetings
+        const commonSignatures = [
+          'saludos cordiales',
+          'best regards',
+          'appraisily support team',
+          'soporte técnico'
+        ];
+        
+        const lowerContent = content.toLowerCase();
+        if (commonSignatures.some(sig => lowerContent.includes(sig))) {
+          logger.debug('Skipping signature message:', {
+            messageId: msg.id,
+            preview: content.substring(0, 50)
+          });
+          return false;
+        }
+
         return true;
       })
       .map(msg => ({
         role: msg.direction === 'inbound' ? 'user' : 'assistant',
-        content: msg.content.trim()
+        content: [{ 
+          type: 'text', 
+          text: msg.content.trim() 
+        }]
       }));
 
-    if (validMessages.length === 0) {
-      throw new ApiError(400, 'No valid messages found for AI processing');
+    // Ensure we have at least one customer message
+    const hasCustomerMessage = validMessages.some(m => m.role === 'user');
+    if (!hasCustomerMessage) {
+      logger.warn('No valid customer messages found', {
+        ticketId: ticket.id,
+        totalMessages: messages.length,
+        validMessages: validMessages.length
+      });
+      throw new ApiError(400, 'No valid customer messages found for AI processing');
     }
 
-    // Sort messages by creation date if available
-    if (validMessages[0].createdAt) {
-      validMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-    }
+    // Keep only the last 5 relevant messages for context
+    const relevantMessages = validMessages.slice(-5);
 
-    logger.debug('Formatted messages for OpenAI:', {
-      messageCount: validMessages.length,
-      roles: validMessages.map(m => m.role),
-      lengths: validMessages.map(m => m.content.length),
-      totalTokenEstimate: validMessages.reduce((acc, m) => acc + m.content.length / 4, 0)
+    logger.info('Sending prompt to OpenAI:', {
+      ticketId: ticket.id,
+      messageCount: relevantMessages.length,
+      systemPrompt: systemPrompt.content,
+      messages: relevantMessages.map(m => ({
+        role: m.role,
+        contentLength: m.content[0].text.length,
+        preview: m.content[0].text.substring(0, 50)
+      })),
+      endpoint: `${this.baseURL}/chat/completions`
     });
 
-    return [systemPrompt, ...validMessages];
+    return [systemPrompt, ...relevantMessages];
+  }
+
+  async generateTicketReply(ticket, messages, customerInfo = null) {
+    try {
+      await this.ensureInitialized();
+
+      logger.info('Starting OpenAI reply generation', {
+        ticketId: ticket.id,
+        messageCount: messages.length,
+        hasCustomerInfo: !!customerInfo,
+        baseURL: this.baseURL
+      });
+
+      const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
+
+      const completion = await this.client.chat.completions.create({
+        model: 'gpt-4',
+        messages: formattedMessages,
+        temperature: 0.7,
+        max_tokens: 500,
+        presence_penalty: 0.6,
+        frequency_penalty: 0.5,
+        timeout: this.timeout
+      });
+
+      const reply = completion.choices[0].message.content;
+
+      logger.info('OpenAI reply generated successfully', {
+        ticketId: ticket.id,
+        replyLength: reply.length,
+        tokensUsed: completion.usage?.total_tokens,
+        model: completion.model
+      });
+
+      return {
+        success: true,
+        reply
+      };
+
+    } catch (error) {
+      logger.error('Error generating reply with OpenAI', {
+        ticketId: ticket.id,
+        error: error.message,
+        stack: error.stack,
+        isOpenAIError: true
+      });
+
+      throw new ApiError(503, `OpenAI API error: ${error.message}`);
+    }
   }
 }
 
