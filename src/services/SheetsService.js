@@ -12,27 +12,35 @@ class SheetsService {
     this.salesSpreadsheetId = null;
     this.appraisalsSpreadsheetId = null;
     this.mockMode = process.env.NODE_ENV !== 'production';
+    this.initializationError = null;
   }
 
   async ensureInitialized() {
-    if (this.initialized) return true;
-    if (this.initPromise) return this.initPromise;
+    // If already initialized successfully, return true
+    if (this.initialized && !this.initializationError) {
+      return true;
+    }
+
+    // If there's a pending initialization, wait for it
+    if (this.initPromise) {
+      return this.initPromise;
+    }
 
     try {
       this.initPromise = this._initialize();
-      const result = await this.initPromise;
+      await this.initPromise;
       this.initialized = true;
-      return result;
+      this.initializationError = null;
+      return true;
     } catch (error) {
       this.initPromise = null;
-      logger.error('Failed to initialize Sheets service:', {
-        error: error.message,
-        stack: error.stack
-      });
+      this.initializationError = error;
 
       // In development, continue in mock mode
       if (this.mockMode) {
-        logger.warn('Running in mock mode due to initialization failure');
+        logger.warn('Running in mock mode due to initialization failure', {
+          error: error.message
+        });
         this.initialized = true;
         return true;
       }
@@ -113,12 +121,26 @@ class SheetsService {
         stack: error.stack,
         isSecretManagerError: error.message.includes('Secret Manager')
       });
+
+      // Store initialization error
+      this.initializationError = error;
+
+      // In development, continue in mock mode
+      if (this.mockMode) {
+        return true;
+      }
+
       throw error;
     }
   }
 
   async getCustomerInfo(email) {
     try {
+      // Check initialization status first
+      if (this.initializationError && !this.mockMode) {
+        throw this.initializationError;
+      }
+
       await this.ensureInitialized();
 
       if (!email) {
@@ -133,8 +155,8 @@ class SheetsService {
         mode: this.mockMode ? 'mock' : 'production'
       });
 
-      // In mock mode, return mock data
-      if (this.mockMode) {
+      // In mock mode or if there was an initialization error, return mock data
+      if (this.mockMode || this.initializationError) {
         return this._getMockCustomerData(normalizedEmail);
       }
 
@@ -266,8 +288,10 @@ class SheetsService {
         throw error;
       }
 
-      // For other errors, return empty data
-      return this._getEmptyCustomerData();
+      // For other errors, return empty data in development or mock data
+      return this.mockMode ? 
+        this._getMockCustomerData(email) : 
+        this._getEmptyCustomerData();
     }
   }
 
