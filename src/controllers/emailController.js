@@ -1,5 +1,6 @@
 const OpenAIService = require('../services/OpenAIService');
 const TicketService = require('../services/TicketService');
+const SheetsService = require('../services/SheetsService');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/apiError');
 
@@ -30,18 +31,23 @@ exports.generateTicketReply = async (req, res, next) => {
     const ticket = ticketResponse.data;
     const messages = ticket.messages;
 
+    // Get customer info from sheets
+    const customerInfo = ticket.customer ? 
+      await SheetsService.getCustomerInfo(ticket.customer.email) : 
+      null;
+
     logger.info('Retrieved ticket data:', {
       ticketId,
       subject: ticket.subject,
       messageCount: messages.length,
-      hasCustomerInfo: !!ticket.customerInfo
+      hasCustomerInfo: !!customerInfo
     });
 
     // Generate reply using OpenAI
     const openAIResponse = await OpenAIService.generateTicketReply(
       ticket,
       messages,
-      ticket.customerInfo
+      customerInfo
     );
 
     if (!openAIResponse.success || !openAIResponse.reply) {
@@ -81,6 +87,9 @@ exports.generateTicketReply = async (req, res, next) => {
       );
     }
 
-    next(error);
+    res.status(error.statusCode).json({
+      success: false,
+      message: error.message
+    });
   }
 };

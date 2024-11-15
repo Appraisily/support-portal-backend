@@ -13,26 +13,27 @@ class SheetsService {
   }
 
   async ensureInitialized() {
-    if (this.initialized) return;
+    if (this.initialized) return true;
     if (this.initPromise) return this.initPromise;
 
     try {
       this.initPromise = this._initialize();
       await this.initPromise;
       this.initialized = true;
+      return true;
     } catch (error) {
       this.initPromise = null;
       logger.error('Sheets service initialization failed', {
         error: error.message,
         stack: error.stack
       });
-      this.initialized = true;
+      throw error;
     }
   }
 
   async _initialize() {
     try {
-      // Get spreadsheet IDs from Secret Manager and clean them
+      // Get spreadsheet IDs from Secret Manager
       [
         this.salesSpreadsheetId,
         this.appraisalsSpreadsheetId
@@ -41,13 +42,12 @@ class SheetsService {
         secretManager.getSecret('PENDING_APPRAISALS_SPREADSHEET_ID')
       ]);
 
-      // Clean spreadsheet IDs (remove any whitespace or newlines)
+      // Clean spreadsheet IDs
       this.salesSpreadsheetId = this.salesSpreadsheetId?.trim();
       this.appraisalsSpreadsheetId = this.appraisalsSpreadsheetId?.trim();
 
       if (!this.salesSpreadsheetId || !this.appraisalsSpreadsheetId) {
-        logger.error('Missing spreadsheet IDs');
-        return;
+        throw new Error('Missing spreadsheet IDs');
       }
 
       // Initialize auth with service account credentials
@@ -80,13 +80,16 @@ class SheetsService {
     try {
       await this.ensureInitialized();
       
-      if (!this.sheets) {
-        logger.warn('Sheets service not properly initialized, returning empty data');
+      if (!email) {
+        logger.warn('No email provided for customer info lookup');
         return this._getEmptyCustomerData();
       }
 
-      const normalizedEmail = email.toLowerCase();
-      logger.info('Getting customer info from sheets', { email });
+      const normalizedEmail = email.toLowerCase().trim();
+      
+      logger.info('Getting customer info from sheets', { 
+        email: normalizedEmail 
+      });
 
       // Get sales data
       const salesResponse = await this.sheets.spreadsheets.values.get({
@@ -114,6 +117,10 @@ class SheetsService {
         }))
         .sort((a, b) => new Date(b.date) - new Date(a.date));
 
+      logger.debug('Sales data retrieved', { 
+        salesCount: sales.length 
+      });
+
       // Get pending appraisals
       const pendingResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.appraisalsSpreadsheetId,
@@ -121,7 +128,6 @@ class SheetsService {
         valueRenderOption: 'UNFORMATTED_VALUE'
       });
 
-      // Process pending appraisals - Column D (index 3) is Customer Email
       const pendingRows = pendingResponse.data.values || [];
       const pendingAppraisals = pendingRows
         .filter(row => row[3]?.toString().toLowerCase() === normalizedEmail)
@@ -136,6 +142,10 @@ class SheetsService {
           value: row[9]
         }));
 
+      logger.debug('Pending appraisals retrieved', { 
+        pendingCount: pendingAppraisals.length 
+      });
+
       // Get completed appraisals
       const completedResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.appraisalsSpreadsheetId,
@@ -143,7 +153,6 @@ class SheetsService {
         valueRenderOption: 'UNFORMATTED_VALUE'
       });
 
-      // Process completed appraisals - Column D (index 3) is Customer Email
       const completedRows = completedResponse.data.values || [];
       const completedAppraisals = completedRows
         .filter(row => row[3]?.toString().toLowerCase() === normalizedEmail)
@@ -162,6 +171,10 @@ class SheetsService {
           docLink: row[13]
         }));
 
+      logger.debug('Completed appraisals retrieved', { 
+        completedCount: completedAppraisals.length 
+      });
+
       // Calculate summary
       const totalSpent = sales.reduce((sum, sale) => sum + sale.amount, 0);
       const lastPurchase = sales[0];
@@ -179,7 +192,7 @@ class SheetsService {
       };
 
       logger.info('Customer info retrieved successfully', {
-        email,
+        email: normalizedEmail,
         salesCount: sales.length,
         pendingAppraisalsCount: pendingAppraisals.length,
         completedAppraisalsCount: completedAppraisals.length,
@@ -196,6 +209,7 @@ class SheetsService {
     } catch (error) {
       logger.error('Error getting customer info from sheets:', {
         error: error.message,
+        stack: error.stack,
         email
       });
       return this._getEmptyCustomerData();

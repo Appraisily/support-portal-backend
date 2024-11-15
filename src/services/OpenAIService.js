@@ -10,13 +10,14 @@ class OpenAIService {
   }
 
   async ensureInitialized() {
-    if (this.initialized) return;
+    if (this.initialized) return true;
     if (this.initPromise) return this.initPromise;
 
     try {
       this.initPromise = this._initialize();
       await this.initPromise;
       this.initialized = true;
+      return true;
     } catch (error) {
       this.initPromise = null;
       logger.error('OpenAI service initialization failed', {
@@ -77,6 +78,12 @@ Ticket information:
         content: msg.content.trim()
       }));
 
+    logger.debug('Formatted messages for OpenAI:', {
+      messageCount: validMessages.length,
+      hasSystemPrompt: true,
+      firstMessage: validMessages[0]?.content.substring(0, 50)
+    });
+
     return [systemPrompt, ...validMessages];
   }
 
@@ -92,6 +99,15 @@ Ticket information:
 
       const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
 
+      if (!this.client) {
+        throw new Error('OpenAI client not initialized');
+      }
+
+      logger.debug('Sending request to OpenAI', {
+        model: 'gpt-4',
+        messageCount: formattedMessages.length
+      });
+
       const completion = await this.client.chat.completions.create({
         model: 'gpt-4',
         messages: formattedMessages,
@@ -101,11 +117,16 @@ Ticket information:
         frequency_penalty: 0.5
       });
 
+      if (!completion.choices || completion.choices.length === 0) {
+        throw new Error('No response received from OpenAI');
+      }
+
       const reply = completion.choices[0].message.content;
 
       logger.info('OpenAI generated reply successfully', {
         ticketId: ticket.id,
-        replyLength: reply.length
+        replyLength: reply.length,
+        firstLine: reply.split('\n')[0]
       });
 
       return {
@@ -117,7 +138,8 @@ Ticket information:
       logger.error('Error generating reply with OpenAI', {
         ticketId: ticket.id,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
+        type: error.constructor.name
       });
       throw error;
     }
