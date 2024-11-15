@@ -39,66 +39,11 @@ class TicketService {
     }
   }
 
-  async listTickets({ status, priority, sort, order }, { page = 1, limit = 10 }) {
-    await this.ensureInitialized();
-
-    try {
-      const where = {};
-      if (status) where.status = status;
-      if (priority) where.priority = priority;
-
-      logger.debug('Listing tickets with query:', {
-        where,
-        sort,
-        order,
-        page,
-        limit
-      });
-
-      const { rows: tickets, count } = await this.models.Ticket.findAndCountAll({
-        where,
-        include: [
-          {
-            model: this.models.Customer,
-            as: 'customer',
-            attributes: ['id', 'name', 'email']
-          }
-        ],
-        order: sort ? [[sort, order || 'DESC']] : [['createdAt', 'DESC']],
-        limit: parseInt(limit),
-        offset: (parseInt(page) - 1) * parseInt(limit)
-      });
-
-      return {
-        tickets: tickets.map(ticket => ({
-          id: ticket.id,
-          subject: ticket.subject,
-          status: ticket.status,
-          priority: ticket.priority,
-          customer: ticket.customer,
-          createdAt: ticket.createdAt,
-          lastMessageAt: ticket.lastMessageAt
-        })),
-        pagination: {
-          total: count,
-          page: parseInt(page),
-          totalPages: Math.ceil(count / limit)
-        }
-      };
-    } catch (error) {
-      logger.error('Error listing tickets:', {
-        error: error.message,
-        filters: { status, priority },
-        pagination: { page, limit }
-      });
-      throw error;
-    }
-  }
-
   async getTicketById(id) {
     await this.ensureInitialized();
 
     try {
+      // Get ticket with all related data
       const ticket = await this.models.Ticket.findByPk(id, {
         include: [
           {
@@ -135,25 +80,25 @@ class TicketService {
             error: error.message,
             email: ticket.customer.email
           });
-          customerInfo = null;
         }
       }
 
-      // Format messages ensuring all required fields are present
+      // Format messages
       const messages = ticket.messages?.map(msg => {
         // Log raw message for debugging
         logger.debug('Processing message:', {
           id: msg.id,
           content: msg.content,
           direction: msg.direction,
+          createdAt: msg.createdAt,
           hasAttachments: msg.attachments?.length > 0
         });
 
         return {
           id: msg.id,
-          content: msg.content || '', // Ensure content is never null
-          direction: msg.direction || 'inbound',
-          createdAt: msg.createdAt?.toISOString(),
+          content: msg.content || '',
+          direction: msg.direction,
+          createdAt: msg.createdAt.toISOString(),
           attachments: msg.attachments?.map(att => ({
             id: att.id,
             name: att.filename,
@@ -162,7 +107,7 @@ class TicketService {
         };
       }) || [];
 
-      // Log messages for debugging
+      // Log processed messages
       logger.info('Retrieved ticket with messages:', {
         ticketId: id,
         messageCount: messages.length,
@@ -172,13 +117,12 @@ class TicketService {
           id: m.id,
           direction: m.direction,
           contentLength: m.content?.length || 0,
-          content: m.content?.substring(0, 50), // Log preview of content
-          hasAttachments: m.attachments?.length > 0
+          contentPreview: m.content?.substring(0, 50)
         }))
       });
 
-      // Prepare response with all required data
-      const response = {
+      // Return response in the exact format expected by frontend
+      return {
         success: true,
         data: {
           id: ticket.id,
@@ -192,21 +136,12 @@ class TicketService {
             email: ticket.customer.email
           } : null,
           messages: messages,
-          customerInfo,
-          createdAt: ticket.createdAt?.toISOString(),
-          updatedAt: ticket.updatedAt?.toISOString(),
+          customerInfo: customerInfo,
+          createdAt: ticket.createdAt.toISOString(),
+          updatedAt: ticket.updatedAt.toISOString(),
           lastMessageAt: ticket.lastMessageAt?.toISOString()
         }
       };
-
-      // Set cache control headers to prevent 304
-      response.headers = {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      };
-
-      return response;
     } catch (error) {
       logger.error('Error getting ticket:', {
         error: error.message,
@@ -228,12 +163,14 @@ class TicketService {
         hasAttachments: attachments.length > 0
       });
 
+      // Create message
       const message = await this.models.Message.create({
         ticketId,
-        content,
-        direction
+        content: content || '',
+        direction: direction || 'outbound'
       });
 
+      // Add attachments if any
       if (attachments.length > 0) {
         await message.setAttachments(attachments);
       }
@@ -253,27 +190,6 @@ class TicketService {
         direction
       });
       throw new Error(`Failed to add reply: ${error.message}`);
-    }
-  }
-
-  async updateTicket(id, updates) {
-    await this.ensureInitialized();
-
-    try {
-      const ticket = await this.models.Ticket.findByPk(id);
-      if (!ticket) {
-        throw new ApiError(404, 'Ticket not found');
-      }
-
-      await ticket.update(updates);
-      return ticket;
-    } catch (error) {
-      logger.error('Error updating ticket:', {
-        error: error.message,
-        ticketId: id,
-        updates
-      });
-      throw error;
     }
   }
 }
