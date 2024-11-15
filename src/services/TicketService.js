@@ -39,6 +39,113 @@ class TicketService {
     }
   }
 
+  async listTickets({ status, priority, sort, order, search, searchFields }, { page = 1, limit = 10 }) {
+    await this.ensureInitialized();
+
+    try {
+      const where = {};
+      const include = [
+        {
+          model: this.models.Customer,
+          as: 'customer',
+          attributes: ['id', 'name', 'email']
+        },
+        {
+          model: this.models.Message,
+          as: 'messages',
+          attributes: ['id', 'content', 'direction', 'createdAt'],
+          separate: true,
+          limit: 1,
+          order: [['createdAt', 'DESC']]
+        }
+      ];
+
+      // Add status filter
+      if (status) {
+        where.status = status;
+      }
+
+      // Add priority filter
+      if (priority) {
+        where.priority = priority;
+      }
+
+      // Add search conditions
+      if (search && searchFields?.length > 0) {
+        const searchConditions = [];
+        
+        if (searchFields.includes('email')) {
+          include[0].where = {
+            email: { [Op.iLike]: `%${search}%` }
+          };
+        }
+        
+        if (searchFields.includes('subject')) {
+          searchConditions.push({
+            subject: { [Op.iLike]: `%${search}%` }
+          });
+        }
+        
+        if (searchFields.includes('content')) {
+          include[1].where = {
+            content: { [Op.iLike]: `%${search}%` }
+          };
+        }
+
+        if (searchConditions.length > 0) {
+          where[Op.or] = searchConditions;
+        }
+      }
+
+      // Execute query
+      const { rows: tickets, count } = await this.models.Ticket.findAndCountAll({
+        where,
+        include,
+        order: sort ? [[sort, order || 'DESC']] : [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        offset: (parseInt(page) - 1) * parseInt(limit),
+        distinct: true
+      });
+
+      logger.info('Tickets retrieved successfully', {
+        totalCount: count,
+        pageCount: tickets.length,
+        page,
+        limit
+      });
+
+      return {
+        success: true,
+        data: {
+          tickets: tickets.map(ticket => ({
+            id: ticket.id,
+            subject: ticket.subject,
+            status: ticket.status,
+            priority: ticket.priority,
+            customer: ticket.customer,
+            lastMessage: ticket.messages[0],
+            createdAt: ticket.createdAt.toISOString(),
+            updatedAt: ticket.updatedAt.toISOString(),
+            lastMessageAt: ticket.lastMessageAt?.toISOString()
+          })),
+          pagination: {
+            total: count,
+            page: parseInt(page),
+            totalPages: Math.ceil(count / limit)
+          }
+        }
+      };
+    } catch (error) {
+      logger.error('Error listing tickets:', {
+        error: error.message,
+        stack: error.stack,
+        filters: { status, priority, sort, order, search, searchFields },
+        pagination: { page, limit }
+      });
+      throw error;
+    }
+  }
+
   async getTicketById(id) {
     await this.ensureInitialized();
 
