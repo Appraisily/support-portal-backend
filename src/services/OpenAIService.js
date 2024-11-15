@@ -1,4 +1,4 @@
-const OpenAI = require('openai');
+const { OpenAI } = require('openai');
 const logger = require('../utils/logger');
 const secretManager = require('../utils/secretManager');
 const ApiError = require('../utils/apiError');
@@ -11,8 +11,13 @@ class OpenAIService {
   }
 
   async ensureInitialized() {
-    if (this.initialized) return true;
-    if (this.initPromise) return this.initPromise;
+    if (this.initialized && this.client) {
+      return true;
+    }
+
+    if (this.initPromise) {
+      return this.initPromise;
+    }
 
     try {
       this.initPromise = this._initialize();
@@ -41,6 +46,7 @@ class OpenAIService {
     });
 
     logger.info('OpenAI service initialized successfully');
+    return true;
   }
 
   _formatMessagesForOpenAI(ticket, messages, customerInfo) {
@@ -71,11 +77,25 @@ Ticket information:
 - Status: ${ticket.status}`
     };
 
+    // Filter and validate messages
     const validMessages = messages
       .filter(msg => {
         const content = msg.content?.trim();
-        if (!content || content.length < 3) return false;
-        if (['test', 'ok', 'ss', 'sa', 'aa'].includes(content.toLowerCase())) return false;
+        if (!content || content.length < 3) {
+          logger.debug('Skipping invalid message:', {
+            id: msg.id,
+            content: content?.substring(0, 20),
+            reason: 'Too short or empty'
+          });
+          return false;
+        }
+        if (['test', 'ok', 'ss', 'sa', 'aa'].includes(content.toLowerCase())) {
+          logger.debug('Skipping test message:', {
+            id: msg.id,
+            content: content
+          });
+          return false;
+        }
         return true;
       })
       .map(msg => ({
@@ -83,11 +103,16 @@ Ticket information:
         content: msg.content.trim()
       }));
 
+    if (validMessages.length === 0) {
+      throw new ApiError(400, 'No valid messages found for AI processing');
+    }
+
     logger.debug('Formatted messages for OpenAI:', {
       messageCount: validMessages.length,
       hasSystemPrompt: true,
       firstMessage: validMessages[0]?.content.substring(0, 50),
-      lastMessage: validMessages[validMessages.length - 1]?.content.substring(0, 50)
+      lastMessage: validMessages[validMessages.length - 1]?.content.substring(0, 50),
+      totalTokenEstimate: validMessages.reduce((acc, msg) => acc + msg.content.length, 0) / 4
     });
 
     return [systemPrompt, ...validMessages];
