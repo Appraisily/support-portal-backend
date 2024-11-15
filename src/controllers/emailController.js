@@ -1,6 +1,5 @@
 const OpenAIService = require('../services/OpenAIService');
 const TicketService = require('../services/TicketService');
-const SheetsService = require('../services/SheetsService');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/apiError');
 
@@ -18,18 +17,7 @@ exports.generateTicketReply = async (req, res) => {
       }
     });
 
-    // Initialize OpenAI service first
-    logger.debug('Initializing OpenAI service...');
-    await OpenAIService.ensureInitialized();
-    logger.debug('OpenAI service initialized');
-
-    // Initialize ticket service
-    logger.debug('Initializing ticket service...');
-    await TicketService.ensureInitialized();
-    logger.debug('Ticket service initialized');
-
     // Get ticket with messages
-    logger.debug('Fetching ticket details...');
     const ticketResponse = await TicketService.getTicketById(ticketId);
     
     if (!ticketResponse?.success || !ticketResponse?.data) {
@@ -59,31 +47,11 @@ exports.generateTicketReply = async (req, res) => {
       priority: ticket.priority
     });
 
-    // Get customer info if available
-    let customerInfo = null;
-    if (ticket.customer?.email) {
-      try {
-        logger.debug('Fetching customer info from sheets...');
-        customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
-        logger.info('Retrieved customer info:', {
-          email: ticket.customer.email,
-          hasSales: customerInfo?.sales?.length > 0,
-          hasPendingAppraisals: customerInfo?.pendingAppraisals?.length > 0
-        });
-      } catch (error) {
-        logger.warn('Failed to get customer info, continuing without it:', {
-          error: error.message,
-          email: ticket.customer.email
-        });
-      }
-    }
-
     // Generate reply using OpenAI
-    logger.debug('Starting OpenAI reply generation...');
     const openAIResponse = await OpenAIService.generateTicketReply(
       ticket,
       messages,
-      customerInfo
+      ticket.customerInfo
     );
 
     if (!openAIResponse?.success || !openAIResponse?.reply) {

@@ -8,7 +8,6 @@ class OpenAIService {
     this.client = null;
     this.initialized = false;
     this.initPromise = null;
-    this.initializationError = null;
   }
 
   async ensureInitialized() {
@@ -21,9 +20,9 @@ class OpenAIService {
     }
 
     try {
+      logger.info('Starting OpenAI initialization');
       this.initPromise = this._initialize();
       await this.initPromise;
-      this.initialized = true;
       return true;
     } catch (error) {
       logger.error('OpenAI initialization failed:', {
@@ -38,27 +37,22 @@ class OpenAIService {
 
   async _initialize() {
     try {
-      logger.info('Initializing OpenAI service...');
-      
       // Get API key from Secret Manager
       const apiKey = await secretManager.getSecret('OPENAI_API_KEY');
       
       if (!apiKey) {
+        logger.error('OpenAI API key not found in Secret Manager');
         throw new ApiError(503, 'OpenAI API key not configured');
       }
 
       // Initialize OpenAI client
       this.client = new OpenAI({
-        apiKey: apiKey
+        apiKey: apiKey,
+        maxRetries: 3,
+        timeout: 30000
       });
 
-      // Test the connection
-      await this.client.chat.completions.create({
-        model: 'gpt-4',
-        messages: [{ role: 'system', content: 'Test connection' }],
-        max_tokens: 5
-      });
-
+      this.initialized = true;
       logger.info('OpenAI service initialized successfully');
       return true;
     } catch (error) {
@@ -87,12 +81,6 @@ class OpenAIService {
       });
 
       const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
-
-      logger.debug('Sending request to OpenAI', {
-        messageCount: formattedMessages.length,
-        model: 'gpt-4',
-        firstMessagePreview: formattedMessages[0].content.substring(0, 100)
-      });
 
       const startTime = Date.now();
       const completion = await this.client.chat.completions.create({
@@ -132,6 +120,10 @@ class OpenAIService {
         stack: error.stack,
         isOpenAIError: error instanceof OpenAI.APIError
       });
+
+      if (error instanceof OpenAI.APIError) {
+        throw new ApiError(503, `OpenAI API error: ${error.message}`);
+      }
       throw error;
     }
   }
@@ -159,7 +151,7 @@ ${customerInfo ? `Customer context:
 
 Ticket information:
 - Subject: ${ticket.subject}
-- Category: ${ticket.category}
+- Category: ${ticket.category || 'General'}
 - Priority: ${ticket.priority}
 - Status: ${ticket.status}`
     };
