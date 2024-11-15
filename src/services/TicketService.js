@@ -146,11 +146,19 @@ class TicketService {
       // Get customer info from sheets if customer exists
       let customerInfo = null;
       if (ticket.customer?.email) {
-        customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
+        try {
+          customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
+        } catch (error) {
+          logger.warn('Failed to get customer info:', {
+            error: error.message,
+            email: ticket.customer.email
+          });
+          // Continue without customer info
+        }
       }
 
       // Format messages to ensure all required fields are present
-      const formattedMessages = ticket.messages.map(msg => ({
+      const messages = ticket.messages.map(msg => ({
         id: msg.id,
         content: msg.content || '', // Ensure content is never null
         direction: msg.direction,
@@ -162,10 +170,11 @@ class TicketService {
         })) || []
       }));
 
-      logger.debug('Formatted ticket messages:', {
+      logger.debug('Formatted ticket data:', {
         ticketId: id,
-        messageCount: formattedMessages.length,
-        hasAttachments: formattedMessages.some(m => m.attachments.length > 0)
+        messageCount: messages.length,
+        hasCustomerInfo: !!customerInfo,
+        hasAttachments: messages.some(m => m.attachments.length > 0)
       });
 
       return {
@@ -178,11 +187,11 @@ class TicketService {
           category: ticket.category,
           customer: ticket.customer,
           assignedTo: ticket.assignedTo,
+          messages, // Include formatted messages array
           customerInfo, // Include customer info from sheets
-          messages: formattedMessages,
-          createdAt: ticket.createdAt,
-          updatedAt: ticket.updatedAt,
-          lastMessageAt: ticket.lastMessageAt
+          createdAt: ticket.createdAt.toISOString(),
+          updatedAt: ticket.updatedAt.toISOString(),
+          lastMessageAt: ticket.lastMessageAt?.toISOString()
         }
       };
     } catch (error) {

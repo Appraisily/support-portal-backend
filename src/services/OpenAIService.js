@@ -24,47 +24,114 @@ class OpenAIService {
       this.initPromise = this._initialize();
       await this.initPromise;
       this.initialized = true;
-      this.initializationError = null;
       return true;
     } catch (error) {
-      this.initPromise = null;
-      this.initializationError = error;
-      logger.error('OpenAI service initialization failed', {
+      logger.error('OpenAI initialization failed:', {
         error: error.message,
-        stack: error.stack,
-        type: error.constructor.name
+        stack: error.stack
       });
       throw error;
+    } finally {
+      this.initPromise = null;
     }
   }
 
   async _initialize() {
-    const apiKey = await secretManager.getSecret('OPENAI_API_KEY');
-    if (!apiKey) {
-      throw new ApiError(503, 'OpenAI API key not configured');
-    }
-
     try {
+      logger.info('Initializing OpenAI service...');
+      
+      // Get API key from Secret Manager
+      const apiKey = await secretManager.getSecret('OPENAI_API_KEY');
+      
+      if (!apiKey) {
+        throw new ApiError(503, 'OpenAI API key not configured');
+      }
+
+      // Initialize OpenAI client
       this.client = new OpenAI({
         apiKey: apiKey
       });
 
-      // Test the API key with a simple completion
+      // Test the connection
       await this.client.chat.completions.create({
         model: 'gpt-4',
         messages: [{ role: 'system', content: 'Test connection' }],
         max_tokens: 5
       });
 
-      logger.info('OpenAI service initialized and tested successfully');
+      logger.info('OpenAI service initialized successfully');
       return true;
     } catch (error) {
+      this.client = null;
+      this.initialized = false;
+      
       if (error instanceof OpenAI.APIError) {
-        throw new ApiError(
-          503,
-          `OpenAI API initialization failed: ${error.message}`
-        );
+        throw new ApiError(503, `OpenAI API error: ${error.message}`);
       }
+      throw error;
+    }
+  }
+
+  async generateTicketReply(ticket, messages, customerInfo = null) {
+    try {
+      await this.ensureInitialized();
+
+      if (!this.client) {
+        throw new ApiError(503, 'OpenAI client not initialized');
+      }
+
+      logger.info('Starting OpenAI reply generation', {
+        ticketId: ticket.id,
+        messageCount: messages.length,
+        hasCustomerInfo: !!customerInfo
+      });
+
+      const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
+
+      logger.debug('Sending request to OpenAI', {
+        messageCount: formattedMessages.length,
+        model: 'gpt-4',
+        firstMessagePreview: formattedMessages[0].content.substring(0, 100)
+      });
+
+      const startTime = Date.now();
+      const completion = await this.client.chat.completions.create({
+        model: 'gpt-4',
+        messages: formattedMessages,
+        temperature: 0.7,
+        max_tokens: 500,
+        presence_penalty: 0.6,
+        frequency_penalty: 0.5
+      });
+
+      const processingTime = Date.now() - startTime;
+
+      if (!completion.choices || completion.choices.length === 0) {
+        throw new ApiError(500, 'No response received from OpenAI');
+      }
+
+      const reply = completion.choices[0].message.content;
+
+      logger.info('OpenAI reply generated successfully', {
+        ticketId: ticket.id,
+        replyLength: reply.length,
+        processingTime,
+        tokenUsage: completion.usage,
+        previewText: reply.substring(0, 100)
+      });
+
+      return {
+        success: true,
+        reply
+      };
+
+    } catch (error) {
+      logger.error('Error generating reply with OpenAI', {
+        ticketId: ticket.id,
+        error: error.message,
+        stack: error.stack,
+        isOpenAIError: error instanceof OpenAI.APIError
+      });
       throw error;
     }
   }
@@ -103,17 +170,13 @@ Ticket information:
         const content = msg.content?.trim();
         if (!content || content.length < 3) {
           logger.debug('Skipping invalid message:', {
-            id: msg.id,
             content: content?.substring(0, 20),
             reason: 'Too short or empty'
           });
           return false;
         }
         if (['test', 'ok', 'ss', 'sa', 'aa'].includes(content.toLowerCase())) {
-          logger.debug('Skipping test message:', {
-            id: msg.id,
-            content: content
-          });
+          logger.debug('Skipping test message:', { content });
           return false;
         }
         return true;
@@ -129,94 +192,11 @@ Ticket information:
 
     logger.debug('Formatted messages for OpenAI:', {
       messageCount: validMessages.length,
-      hasSystemPrompt: true,
-      firstMessage: validMessages[0]?.content.substring(0, 50),
-      lastMessage: validMessages[validMessages.length - 1]?.content.substring(0, 50),
-      totalTokenEstimate: validMessages.reduce((acc, msg) => acc + msg.content.length, 0) / 4
+      firstMessagePreview: validMessages[0]?.content.substring(0, 50),
+      lastMessagePreview: validMessages[validMessages.length - 1]?.content.substring(0, 50)
     });
 
     return [systemPrompt, ...validMessages];
-  }
-
-  async generateTicketReply(ticket, messages, customerInfo = null) {
-    if (this.initializationError) {
-      throw this.initializationError;
-    }
-
-    await this.ensureInitialized();
-
-    try {
-      logger.info('Starting OpenAI reply generation', {
-        ticketId: ticket.id,
-        messageCount: messages.length,
-        hasCustomerInfo: !!customerInfo
-      });
-
-      if (!this.client) {
-        throw new ApiError(503, 'OpenAI client not initialized');
-      }
-
-      const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
-
-      logger.debug('Sending request to OpenAI', {
-        model: 'gpt-4',
-        messageCount: formattedMessages.length,
-        systemPromptLength: formattedMessages[0].content.length,
-        totalTokenEstimate: formattedMessages.reduce((acc, msg) => acc + msg.content.length, 0) / 4
-      });
-
-      const startTime = Date.now();
-      const completion = await this.client.chat.completions.create({
-        model: 'gpt-4',
-        messages: formattedMessages,
-        temperature: 0.7,
-        max_tokens: 500,
-        presence_penalty: 0.6,
-        frequency_penalty: 0.5
-      });
-
-      if (!completion.choices || completion.choices.length === 0) {
-        throw new ApiError(500, 'No response received from OpenAI');
-      }
-
-      const reply = completion.choices[0].message.content;
-      const processingTime = Date.now() - startTime;
-
-      logger.info('OpenAI generated reply successfully', {
-        ticketId: ticket.id,
-        replyLength: reply.length,
-        firstLine: reply.split('\n')[0],
-        model: completion.model,
-        promptTokens: completion.usage?.prompt_tokens,
-        completionTokens: completion.usage?.completion_tokens,
-        processingTime
-      });
-
-      return {
-        success: true,
-        reply
-      };
-
-    } catch (error) {
-      logger.error('Error generating reply with OpenAI', {
-        ticketId: ticket.id,
-        error: error.message,
-        stack: error.stack,
-        type: error.constructor.name,
-        isOpenAIError: error instanceof OpenAI.APIError,
-        statusCode: error.status || error.statusCode
-      });
-
-      // Handle specific OpenAI errors
-      if (error instanceof OpenAI.APIError) {
-        throw new ApiError(
-          error.status || 500,
-          `OpenAI API error: ${error.message}`
-        );
-      }
-
-      throw error;
-    }
   }
 }
 
