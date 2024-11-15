@@ -11,6 +11,7 @@ class SheetsService {
     this.initPromise = null;
     this.salesSpreadsheetId = null;
     this.appraisalsSpreadsheetId = null;
+    this.mockMode = process.env.NODE_ENV !== 'production';
   }
 
   async ensureInitialized() {
@@ -19,25 +20,40 @@ class SheetsService {
 
     try {
       this.initPromise = this._initialize();
-      await this.initPromise;
+      const result = await this.initPromise;
       this.initialized = true;
-      return true;
+      return result;
     } catch (error) {
       this.initPromise = null;
       logger.error('Failed to initialize Sheets service:', {
         error: error.message,
         stack: error.stack
       });
+
+      // In development, continue in mock mode
+      if (this.mockMode) {
+        logger.warn('Running in mock mode due to initialization failure');
+        this.initialized = true;
+        return true;
+      }
+
       throw error;
     }
   }
 
   async _initialize() {
     try {
-      // Get service account credentials
+      // Get service account credentials from Secret Manager
       const serviceAccountJson = await secretManager.getSecret('service-account-json');
+      
+      // In development, we can proceed without credentials
+      if (this.mockMode && !serviceAccountJson) {
+        logger.warn('No service account credentials found, running in mock mode');
+        return true;
+      }
+
       if (!serviceAccountJson) {
-        throw new ApiError(503, 'Service account credentials not found');
+        throw new ApiError(503, 'Service account credentials not found in Secret Manager');
       }
 
       // Get spreadsheet IDs
@@ -54,7 +70,13 @@ class SheetsService {
       this.appraisalsSpreadsheetId = this.appraisalsSpreadsheetId?.trim();
 
       if (!this.salesSpreadsheetId || !this.appraisalsSpreadsheetId) {
-        throw new ApiError(503, 'Missing spreadsheet IDs');
+        if (this.mockMode) {
+          logger.warn('Missing spreadsheet IDs, using mock values');
+          this.salesSpreadsheetId = 'mock-sales-sheet';
+          this.appraisalsSpreadsheetId = 'mock-appraisals-sheet';
+        } else {
+          throw new ApiError(503, 'Missing spreadsheet IDs in Secret Manager');
+        }
       }
 
       // Parse service account credentials
@@ -62,7 +84,7 @@ class SheetsService {
       try {
         credentials = JSON.parse(serviceAccountJson);
       } catch (error) {
-        throw new ApiError(503, 'Invalid service account credentials format');
+        throw new ApiError(503, 'Invalid service account credentials format in Secret Manager');
       }
 
       // Initialize auth with service account credentials
@@ -79,14 +101,17 @@ class SheetsService {
 
       logger.info('Sheets service initialized successfully', {
         salesSpreadsheetId: this.salesSpreadsheetId,
-        appraisalsSpreadsheetId: this.appraisalsSpreadsheetId
+        appraisalsSpreadsheetId: this.appraisalsSpreadsheetId,
+        mode: this.mockMode ? 'mock' : 'production',
+        hasCredentials: !!credentials
       });
 
       return true;
     } catch (error) {
       logger.error('Failed to initialize Sheets service:', {
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
+        isSecretManagerError: error.message.includes('Secret Manager')
       });
       throw error;
     }
@@ -104,8 +129,14 @@ class SheetsService {
       const normalizedEmail = email.toLowerCase().trim();
       
       logger.info('Getting customer info from sheets', { 
-        email: normalizedEmail 
+        email: normalizedEmail,
+        mode: this.mockMode ? 'mock' : 'production'
       });
+
+      // In mock mode, return mock data
+      if (this.mockMode) {
+        return this._getMockCustomerData(normalizedEmail);
+      }
 
       // Get sales data
       const salesResponse = await this.sheets.spreadsheets.values.get({
@@ -226,7 +257,8 @@ class SheetsService {
       logger.error('Error getting customer info from sheets:', {
         error: error.message,
         stack: error.stack,
-        email
+        email,
+        isAuthError: error.message.includes('authentication')
       });
 
       // If there's an initialization error, throw it
@@ -237,6 +269,60 @@ class SheetsService {
       // For other errors, return empty data
       return this._getEmptyCustomerData();
     }
+  }
+
+  _getMockCustomerData(email) {
+    const mockDate = new Date().toISOString();
+    return {
+      sales: [
+        {
+          sessionId: 'mock-session-1',
+          chargeId: 'mock-charge-1',
+          stripeCustomerId: 'mock-stripe-1',
+          customerName: email.split('@')[0],
+          amount: 99.99,
+          date: mockDate
+        }
+      ],
+      pendingAppraisals: [
+        {
+          date: mockDate,
+          serviceType: 'Standard',
+          sessionId: 'mock-session-1',
+          status: 'pending',
+          editLink: 'https://example.com/edit',
+          imageDescription: 'Mock image description',
+          customerDescription: 'Mock customer description',
+          value: '150.00'
+        }
+      ],
+      completedAppraisals: [
+        {
+          date: mockDate,
+          serviceType: 'Premium',
+          sessionId: 'mock-session-2',
+          status: 'completed',
+          editLink: 'https://example.com/edit',
+          imageDescription: 'Mock completed image',
+          customerDescription: 'Mock completed description',
+          value: '200.00',
+          appraisersDescription: 'Mock appraiser notes',
+          finalDescription: 'Mock final description',
+          pdfLink: 'https://example.com/pdf',
+          docLink: 'https://example.com/doc'
+        }
+      ],
+      summary: {
+        totalPurchases: 1,
+        totalSpent: 99.99,
+        hasPendingAppraisals: true,
+        hasCompletedAppraisals: true,
+        totalAppraisals: 2,
+        isExistingCustomer: true,
+        lastPurchaseDate: mockDate,
+        stripeCustomerId: 'mock-stripe-1'
+      }
+    };
   }
 
   _getEmptyCustomerData() {
