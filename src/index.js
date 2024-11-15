@@ -24,6 +24,16 @@ app.use(helmet());
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// Disable caching for all routes
+app.use((req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  });
+  next();
+});
+
 // Request logging middleware
 app.use((req, res, next) => {
   const startTime = Date.now();

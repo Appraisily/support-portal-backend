@@ -135,24 +135,34 @@ class TicketService {
             error: error.message,
             email: ticket.customer.email
           });
-          // Don't throw error, continue without customer info
           customerInfo = null;
         }
       }
 
       // Format messages ensuring all required fields are present
-      const messages = ticket.messages?.map(msg => ({
-        id: msg.id,
-        content: msg.content || '',
-        direction: msg.direction || 'inbound',
-        createdAt: msg.createdAt?.toISOString(),
-        attachments: msg.attachments?.map(att => ({
-          id: att.id,
-          name: att.filename,
-          url: att.url
-        })) || []
-      })) || [];
+      const messages = ticket.messages?.map(msg => {
+        // Log raw message for debugging
+        logger.debug('Processing message:', {
+          id: msg.id,
+          content: msg.content,
+          direction: msg.direction,
+          hasAttachments: msg.attachments?.length > 0
+        });
 
+        return {
+          id: msg.id,
+          content: msg.content || '', // Ensure content is never null
+          direction: msg.direction || 'inbound',
+          createdAt: msg.createdAt?.toISOString(),
+          attachments: msg.attachments?.map(att => ({
+            id: att.id,
+            name: att.filename,
+            url: att.url
+          })) || []
+        };
+      }) || [];
+
+      // Log messages for debugging
       logger.info('Retrieved ticket with messages:', {
         ticketId: id,
         messageCount: messages.length,
@@ -162,11 +172,13 @@ class TicketService {
           id: m.id,
           direction: m.direction,
           contentLength: m.content?.length || 0,
+          content: m.content?.substring(0, 50), // Log preview of content
           hasAttachments: m.attachments?.length > 0
         }))
       });
 
-      return {
+      // Prepare response with all required data
+      const response = {
         success: true,
         data: {
           id: ticket.id,
@@ -174,18 +186,27 @@ class TicketService {
           status: ticket.status,
           priority: ticket.priority,
           category: ticket.category,
-          customer: {
-            id: ticket.customer?.id,
-            name: ticket.customer?.name,
-            email: ticket.customer?.email
-          },
-          messages,
+          customer: ticket.customer ? {
+            id: ticket.customer.id,
+            name: ticket.customer.name,
+            email: ticket.customer.email
+          } : null,
+          messages: messages,
           customerInfo,
           createdAt: ticket.createdAt?.toISOString(),
           updatedAt: ticket.updatedAt?.toISOString(),
           lastMessageAt: ticket.lastMessageAt?.toISOString()
         }
       };
+
+      // Set cache control headers to prevent 304
+      response.headers = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      };
+
+      return response;
     } catch (error) {
       logger.error('Error getting ticket:', {
         error: error.message,
