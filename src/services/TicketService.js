@@ -125,6 +125,7 @@ class TicketService {
               {
                 model: this.models.Attachment,
                 as: 'attachments',
+                attributes: ['id', 'filename', 'url'],
                 through: { attributes: [] }
               }
             ],
@@ -148,6 +149,25 @@ class TicketService {
         customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
       }
 
+      // Format messages to ensure all required fields are present
+      const formattedMessages = ticket.messages.map(msg => ({
+        id: msg.id,
+        content: msg.content || '', // Ensure content is never null
+        direction: msg.direction,
+        createdAt: msg.createdAt.toISOString(),
+        attachments: msg.attachments?.map(att => ({
+          id: att.id,
+          name: att.filename,
+          url: att.url
+        })) || []
+      }));
+
+      logger.debug('Formatted ticket messages:', {
+        ticketId: id,
+        messageCount: formattedMessages.length,
+        hasAttachments: formattedMessages.some(m => m.attachments.length > 0)
+      });
+
       return {
         success: true,
         data: {
@@ -159,17 +179,7 @@ class TicketService {
           customer: ticket.customer,
           assignedTo: ticket.assignedTo,
           customerInfo, // Include customer info from sheets
-          messages: ticket.messages.map(msg => ({
-            id: msg.id,
-            content: msg.content,
-            direction: msg.direction,
-            createdAt: msg.createdAt,
-            attachments: msg.attachments?.map(att => ({
-              id: att.id,
-              name: att.filename,
-              url: att.url
-            })) || []
-          })),
+          messages: formattedMessages,
           createdAt: ticket.createdAt,
           updatedAt: ticket.updatedAt,
           lastMessageAt: ticket.lastMessageAt
@@ -244,7 +254,28 @@ class TicketService {
         { where: { id: ticketId } }
       );
 
-      return message;
+      // Return formatted message with attachments
+      const messageWithAttachments = await this.models.Message.findByPk(message.id, {
+        include: [{
+          model: this.models.Attachment,
+          as: 'attachments',
+          attributes: ['id', 'filename', 'url'],
+          through: { attributes: [] }
+        }]
+      });
+
+      return {
+        id: messageWithAttachments.id,
+        content: messageWithAttachments.content,
+        direction: messageWithAttachments.direction,
+        createdAt: messageWithAttachments.createdAt.toISOString(),
+        attachments: messageWithAttachments.attachments?.map(att => ({
+          id: att.id,
+          name: att.filename,
+          url: att.url
+        })) || []
+      };
+
     } catch (error) {
       logger.error('Error adding reply:', {
         error: error.message,
@@ -257,4 +288,4 @@ class TicketService {
   }
 }
 
-module.exports = TicketService;
+module.exports = new TicketService();
