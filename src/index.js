@@ -9,28 +9,9 @@ const secretManager = require('./utils/secretManager');
 
 const app = express();
 
-// CORS configuration with more detailed logging
+// CORS configuration
 const corsOptions = {
-  origin: function(origin, callback) {
-    // Allow all origins in development
-    if (process.env.NODE_ENV !== 'production') {
-      callback(null, true);
-      return;
-    }
-    
-    const allowedOrigins = [
-      'https://support-portal.appraisily.com',
-      'http://localhost:5173',
-      'http://localhost:3000'
-    ];
-    
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      logger.warn('Blocked request from unauthorized origin:', { origin });
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: '*', // Allow all origins for now
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
@@ -55,7 +36,8 @@ app.use((req, res, next) => {
     headers: {
       'content-type': req.headers['content-type'],
       'content-length': req.headers['content-length'],
-      origin: req.headers.origin
+      origin: req.headers.origin,
+      authorization: req.headers.authorization ? 'present' : 'missing'
     },
     ip: req.ip
   });

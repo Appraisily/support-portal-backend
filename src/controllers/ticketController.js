@@ -1,6 +1,7 @@
-const logger = require('../utils/logger');
 const ticketService = require('../services/TicketService');
+const GmailService = require('../services/GmailService');
 const ApiError = require('../utils/apiError');
+const logger = require('../utils/logger');
 
 exports.listTickets = async (req, res) => {
   try {
@@ -44,18 +45,10 @@ exports.listTickets = async (req, res) => {
       userId: req.user?.id
     });
     
-    // Send appropriate error response
-    if (error instanceof ApiError) {
-      res.status(error.statusCode).json({
-        success: false,
-        message: error.message
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        message: 'Internal server error while fetching tickets'
-      });
-    }
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to fetch tickets'
+    });
   }
 };
 
@@ -64,12 +57,13 @@ exports.getTicket = async (req, res) => {
     await ticketService.ensureInitialized();
 
     logger.info('Getting ticket details', {
-      ticketId: req.params.id
+      ticketId: req.params.id,
+      userId: req.user?.id
     });
 
     const response = await ticketService.getTicketById(req.params.id);
     
-    if (!response) {
+    if (!response?.success || !response?.data) {
       throw new ApiError(404, 'Ticket not found');
     }
 
@@ -80,7 +74,11 @@ exports.getTicket = async (req, res) => {
       error: error.message,
       stack: error.stack
     });
-    next(error);
+
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to fetch ticket'
+    });
   }
 };
 
@@ -91,7 +89,8 @@ exports.createTicket = async (req, res) => {
     logger.info('Creating new ticket', {
       subject: req.body.subject,
       category: req.body.category,
-      customerId: req.body.customerId
+      customerId: req.body.customerId,
+      userId: req.user?.id
     });
 
     const ticket = await ticketService.createTicket(req.body);
@@ -114,7 +113,11 @@ exports.createTicket = async (req, res) => {
       stack: error.stack,
       body: req.body
     });
-    next(error);
+
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to create ticket'
+    });
   }
 };
 
@@ -126,7 +129,8 @@ exports.updateTicket = async (req, res) => {
     
     logger.info('Updating ticket', {
       ticketId: id,
-      updates: req.body
+      updates: req.body,
+      userId: req.user?.id
     });
 
     const ticket = await ticketService.updateTicket(id, req.body);
@@ -150,7 +154,11 @@ exports.updateTicket = async (req, res) => {
       ticketId: req.params.id,
       updates: req.body
     });
-    next(error);
+
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to update ticket'
+    });
   }
 };
 
@@ -164,22 +172,24 @@ exports.replyToTicket = async (req, res) => {
     logger.info('Adding reply to ticket', {
       ticketId,
       direction,
-      userId: req.user?.id
+      userId: req.user?.id,
+      contentLength: content?.length
     });
 
-    // Get the ticket first to get customer email and thread ID
+    // Get the ticket first
     const ticketResponse = await ticketService.getTicketById(ticketId);
     
-    if (!ticketResponse || !ticketResponse.data) {
+    if (!ticketResponse?.success || !ticketResponse?.data) {
       throw new ApiError(404, 'Ticket not found');
     }
 
     const ticket = ticketResponse.data;
 
-    // Create the reply in the database
+    // Create the reply
     const reply = await ticketService.addReply(ticketId, {
       content,
       direction,
+      userId: req.user?.id,
       attachments: req.body.attachments || []
     });
 
@@ -187,6 +197,30 @@ exports.replyToTicket = async (req, res) => {
       throw new ApiError(500, 'Failed to create reply');
     }
 
+    // Send email if outbound
+    if (direction === 'outbound' && ticket.customer?.email) {
+      try {
+        await GmailService.sendEmail(
+          ticket.customer.email,
+          `Re: ${ticket.subject}`,
+          content,
+          ticket.gmailThreadId
+        );
+
+        logger.info('Email reply sent successfully', {
+          ticketId,
+          customerEmail: ticket.customer.email
+        });
+      } catch (emailError) {
+        logger.warn('Failed to send email reply', {
+          error: emailError.message,
+          ticketId,
+          customerEmail: ticket.customer.email
+        });
+        // Continue even if email fails
+      }
+    }
+    
     res.status(201).json({ 
       success: true, 
       data: reply 
@@ -197,6 +231,10 @@ exports.replyToTicket = async (req, res) => {
       error: error.message,
       stack: error.stack
     });
-    next(error);
+
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Failed to add reply'
+    });
   }
 };
