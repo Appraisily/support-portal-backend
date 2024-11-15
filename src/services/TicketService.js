@@ -39,6 +39,78 @@ class TicketService {
     }
   }
 
+  async listTickets({ status, priority, sort, order }, { page = 1, limit = 10 }) {
+    await this.ensureInitialized();
+
+    try {
+      const where = {};
+      if (status) where.status = status;
+      if (priority) where.priority = priority;
+
+      logger.debug('Listing tickets with query:', {
+        where,
+        sort,
+        order,
+        page,
+        limit
+      });
+
+      const { rows: tickets, count } = await this.models.Ticket.findAndCountAll({
+        where,
+        include: [
+          {
+            model: this.models.Customer,
+            as: 'customer',
+            attributes: ['id', 'name', 'email']
+          }
+        ],
+        order: sort ? [[sort, order || 'DESC']] : [['createdAt', 'DESC']],
+        limit: parseInt(limit),
+        offset: (parseInt(page) - 1) * parseInt(limit)
+      });
+
+      // Format tickets for response
+      const formattedTickets = tickets.map(ticket => ({
+        id: ticket.id,
+        subject: ticket.subject,
+        status: ticket.status,
+        priority: ticket.priority,
+        category: ticket.category,
+        customer: ticket.customer ? {
+          id: ticket.customer.id,
+          name: ticket.customer.name,
+          email: ticket.customer.email
+        } : null,
+        createdAt: ticket.createdAt.toISOString(),
+        updatedAt: ticket.updatedAt.toISOString(),
+        lastMessageAt: ticket.lastMessageAt?.toISOString()
+      }));
+
+      logger.info('Tickets retrieved successfully', {
+        totalCount: count,
+        pageCount: formattedTickets.length,
+        currentPage: page
+      });
+
+      return {
+        tickets: formattedTickets,
+        pagination: {
+          total: count,
+          page: parseInt(page),
+          totalPages: Math.ceil(count / limit)
+        }
+      };
+    } catch (error) {
+      logger.error('Error listing tickets:', {
+        error: error.message,
+        stack: error.stack,
+        filters: { status, priority },
+        pagination: { page, limit }
+      });
+      throw error;
+    }
+  }
+
   async getTicketById(id) {
     await this.ensureInitialized();
 
@@ -80,32 +152,37 @@ class TicketService {
             error: error.message,
             email: ticket.customer.email
           });
+          // Set default empty structure if sheets fetch fails
+          customerInfo = {
+            sales: [],
+            pendingAppraisals: [],
+            completedAppraisals: [],
+            summary: {
+              totalPurchases: 0,
+              totalSpent: 0,
+              hasPendingAppraisals: false,
+              hasCompletedAppraisals: false,
+              totalAppraisals: 0,
+              isExistingCustomer: false,
+              lastPurchaseDate: null,
+              stripeCustomerId: null
+            }
+          };
         }
       }
 
       // Format messages
-      const messages = ticket.messages?.map(msg => {
-        // Log raw message for debugging
-        logger.debug('Processing message:', {
-          id: msg.id,
-          content: msg.content,
-          direction: msg.direction,
-          createdAt: msg.createdAt,
-          hasAttachments: msg.attachments?.length > 0
-        });
-
-        return {
-          id: msg.id,
-          content: msg.content || '',
-          direction: msg.direction,
-          createdAt: msg.createdAt.toISOString(),
-          attachments: msg.attachments?.map(att => ({
-            id: att.id,
-            name: att.filename,
-            url: att.url
-          })) || []
-        };
-      }) || [];
+      const messages = ticket.messages?.map(msg => ({
+        id: msg.id,
+        content: msg.content || '',
+        direction: msg.direction,
+        createdAt: msg.createdAt.toISOString(),
+        attachments: msg.attachments?.map(att => ({
+          id: att.id,
+          name: att.filename,
+          url: att.url
+        })) || []
+      })) || [];
 
       // Log processed messages
       logger.info('Retrieved ticket with messages:', {
@@ -117,7 +194,7 @@ class TicketService {
           id: m.id,
           direction: m.direction,
           contentLength: m.content?.length || 0,
-          contentPreview: m.content?.substring(0, 50)
+          hasAttachments: m.attachments?.length > 0
         }))
       });
 
@@ -129,7 +206,7 @@ class TicketService {
           subject: ticket.subject,
           status: ticket.status,
           priority: ticket.priority,
-          category: ticket.category,
+          category: ticket.category || 'general',
           customer: ticket.customer ? {
             id: ticket.customer.id,
             name: ticket.customer.name,
@@ -139,7 +216,8 @@ class TicketService {
           customerInfo: customerInfo,
           createdAt: ticket.createdAt.toISOString(),
           updatedAt: ticket.updatedAt.toISOString(),
-          lastMessageAt: ticket.lastMessageAt?.toISOString()
+          lastMessageAt: ticket.lastMessageAt?.toISOString(),
+          gmailThreadId: ticket.gmailThreadId
         }
       };
     } catch (error) {
@@ -194,4 +272,6 @@ class TicketService {
   }
 }
 
-module.exports = new TicketService();
+// Export a singleton instance
+const ticketService = new TicketService();
+module.exports = ticketService;
