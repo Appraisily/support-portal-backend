@@ -1,6 +1,7 @@
 const { google } = require('googleapis');
 const logger = require('../utils/logger');
 const secretManager = require('../utils/secretManager');
+const ApiError = require('../utils/apiError');
 
 class SheetsService {
   constructor() {
@@ -23,7 +24,7 @@ class SheetsService {
       return true;
     } catch (error) {
       this.initPromise = null;
-      logger.error('Sheets service initialization failed', {
+      logger.error('Failed to initialize Sheets service:', {
         error: error.message,
         stack: error.stack
       });
@@ -36,7 +37,7 @@ class SheetsService {
       // Get service account credentials
       const serviceAccountJson = await secretManager.getSecret('service-account-json');
       if (!serviceAccountJson) {
-        throw new Error('Service account credentials not found');
+        throw new ApiError(503, 'Service account credentials not found');
       }
 
       // Get spreadsheet IDs
@@ -53,11 +54,18 @@ class SheetsService {
       this.appraisalsSpreadsheetId = this.appraisalsSpreadsheetId?.trim();
 
       if (!this.salesSpreadsheetId || !this.appraisalsSpreadsheetId) {
-        throw new Error('Missing spreadsheet IDs');
+        throw new ApiError(503, 'Missing spreadsheet IDs');
+      }
+
+      // Parse service account credentials
+      let credentials;
+      try {
+        credentials = JSON.parse(serviceAccountJson);
+      } catch (error) {
+        throw new ApiError(503, 'Invalid service account credentials format');
       }
 
       // Initialize auth with service account credentials
-      const credentials = JSON.parse(serviceAccountJson);
       this.auth = new google.auth.GoogleAuth({
         credentials,
         scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly']
@@ -73,6 +81,8 @@ class SheetsService {
         salesSpreadsheetId: this.salesSpreadsheetId,
         appraisalsSpreadsheetId: this.appraisalsSpreadsheetId
       });
+
+      return true;
     } catch (error) {
       logger.error('Failed to initialize Sheets service:', {
         error: error.message,
@@ -85,7 +95,7 @@ class SheetsService {
   async getCustomerInfo(email) {
     try {
       await this.ensureInitialized();
-      
+
       if (!email) {
         logger.warn('No email provided for customer info lookup');
         return this._getEmptyCustomerData();
@@ -218,6 +228,13 @@ class SheetsService {
         stack: error.stack,
         email
       });
+
+      // If there's an initialization error, throw it
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      // For other errors, return empty data
       return this._getEmptyCustomerData();
     }
   }
