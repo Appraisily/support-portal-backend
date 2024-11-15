@@ -38,7 +38,7 @@ class TicketService {
     }
   }
 
-  async listTickets({ status, priority, sort, order }, { page = 1, limit = 10 }) {
+  async listTickets({ status, priority, sort = 'createdAt', order = 'DESC' }, { page = 1, limit = 10 }) {
     await this.ensureInitialized();
 
     try {
@@ -61,23 +61,34 @@ class TicketService {
             model: this.models.Customer,
             as: 'customer',
             attributes: ['id', 'name', 'email']
+          },
+          {
+            model: this.models.User,
+            as: 'assignedTo',
+            attributes: ['id', 'name', 'email']
           }
         ],
-        order: sort ? [[sort, order || 'DESC']] : [['createdAt', 'DESC']],
+        order: [[sort, order]],
         limit: parseInt(limit),
-        offset: (parseInt(page) - 1) * parseInt(limit)
+        offset: (parseInt(page) - 1) * parseInt(limit),
+        distinct: true
       });
 
+      const formattedTickets = tickets.map(ticket => ({
+        id: ticket.id,
+        subject: ticket.subject,
+        status: ticket.status,
+        priority: ticket.priority,
+        category: ticket.category,
+        customer: ticket.customer,
+        assignedTo: ticket.assignedTo,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        lastMessageAt: ticket.lastMessageAt
+      }));
+
       return {
-        tickets: tickets.map(ticket => ({
-          id: ticket.id,
-          subject: ticket.subject,
-          status: ticket.status,
-          priority: ticket.priority,
-          customer: ticket.customer,
-          createdAt: ticket.createdAt,
-          lastMessageAt: ticket.lastMessageAt
-        })),
+        tickets: formattedTickets,
         pagination: {
           total: count,
           page: parseInt(page),
@@ -87,10 +98,11 @@ class TicketService {
     } catch (error) {
       logger.error('Error listing tickets:', {
         error: error.message,
+        stack: error.stack,
         filters: { status, priority },
         pagination: { page, limit }
       });
-      throw error;
+      throw new ApiError(500, 'Failed to fetch tickets: ' + error.message);
     }
   }
 
@@ -116,6 +128,11 @@ class TicketService {
               }
             ],
             order: [['createdAt', 'ASC']]
+          },
+          {
+            model: this.models.User,
+            as: 'assignedTo',
+            attributes: ['id', 'name', 'email']
           }
         ]
       });
@@ -123,13 +140,6 @@ class TicketService {
       if (!ticket) {
         throw new ApiError(404, 'Ticket not found');
       }
-
-      logger.info('Ticket dates:', {
-        ticketId: id,
-        createdAt: ticket.createdAt,
-        updatedAt: ticket.updatedAt,
-        lastMessageAt: ticket.lastMessageAt
-      });
 
       return {
         success: true,
@@ -140,6 +150,7 @@ class TicketService {
           priority: ticket.priority,
           category: ticket.category,
           customer: ticket.customer,
+          assignedTo: ticket.assignedTo,
           messages: ticket.messages.map(msg => ({
             id: msg.id,
             content: msg.content,
@@ -159,7 +170,46 @@ class TicketService {
     } catch (error) {
       logger.error('Error getting ticket:', {
         error: error.message,
+        stack: error.stack,
         ticketId: id
+      });
+      throw error;
+    }
+  }
+
+  async createTicket(data) {
+    await this.ensureInitialized();
+
+    try {
+      const ticket = await this.models.Ticket.create(data);
+      return ticket;
+    } catch (error) {
+      logger.error('Error creating ticket:', {
+        error: error.message,
+        stack: error.stack,
+        data
+      });
+      throw new ApiError(500, 'Failed to create ticket: ' + error.message);
+    }
+  }
+
+  async updateTicket(id, updates) {
+    await this.ensureInitialized();
+
+    try {
+      const ticket = await this.models.Ticket.findByPk(id);
+      if (!ticket) {
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      await ticket.update(updates);
+      return ticket;
+    } catch (error) {
+      logger.error('Error updating ticket:', {
+        error: error.message,
+        stack: error.stack,
+        ticketId: id,
+        updates
       });
       throw error;
     }
@@ -169,13 +219,6 @@ class TicketService {
     await this.ensureInitialized();
 
     try {
-      logger.info('Adding reply to ticket', {
-        ticketId,
-        direction,
-        userId,
-        hasAttachments: attachments.length > 0
-      });
-
       const message = await this.models.Message.create({
         ticketId,
         content,
@@ -197,31 +240,11 @@ class TicketService {
     } catch (error) {
       logger.error('Error adding reply:', {
         error: error.message,
+        stack: error.stack,
         ticketId,
         direction
       });
-      throw error;
-    }
-  }
-
-  async updateTicket(id, updates) {
-    await this.ensureInitialized();
-
-    try {
-      const ticket = await this.models.Ticket.findByPk(id);
-      if (!ticket) {
-        throw new ApiError(404, 'Ticket not found');
-      }
-
-      await ticket.update(updates);
-      return ticket;
-    } catch (error) {
-      logger.error('Error updating ticket:', {
-        error: error.message,
-        ticketId: id,
-        updates
-      });
-      throw error;
+      throw new ApiError(500, 'Failed to add reply: ' + error.message);
     }
   }
 }
