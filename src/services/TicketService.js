@@ -1,6 +1,7 @@
 const logger = require('../utils/logger');
 const { initializeDatabase } = require('../config/database');
 const ApiError = require('../utils/apiError');
+const SheetsService = require('./SheetsService');
 const { Op } = require('sequelize');
 
 class TicketService {
@@ -141,6 +142,12 @@ class TicketService {
         throw new ApiError(404, 'Ticket not found');
       }
 
+      // Get customer info from sheets if customer exists
+      let customerInfo = null;
+      if (ticket.customer?.email) {
+        customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
+      }
+
       return {
         success: true,
         data: {
@@ -151,6 +158,7 @@ class TicketService {
           category: ticket.category,
           customer: ticket.customer,
           assignedTo: ticket.assignedTo,
+          customerInfo, // Include customer info from sheets
           messages: ticket.messages.map(msg => ({
             id: msg.id,
             content: msg.content,

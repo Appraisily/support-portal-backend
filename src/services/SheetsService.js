@@ -33,7 +33,13 @@ class SheetsService {
 
   async _initialize() {
     try {
-      // Get spreadsheet IDs from Secret Manager
+      // Get service account credentials
+      const serviceAccountJson = await secretManager.getSecret('service-account-json');
+      if (!serviceAccountJson) {
+        throw new Error('Service account credentials not found');
+      }
+
+      // Get spreadsheet IDs
       [
         this.salesSpreadsheetId,
         this.appraisalsSpreadsheetId
@@ -51,9 +57,10 @@ class SheetsService {
       }
 
       // Initialize auth with service account credentials
+      const credentials = JSON.parse(serviceAccountJson);
       this.auth = new google.auth.GoogleAuth({
-        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly']
       });
 
       // Initialize sheets API
@@ -69,8 +76,7 @@ class SheetsService {
     } catch (error) {
       logger.error('Failed to initialize Sheets service:', {
         error: error.message,
-        stack: error.stack,
-        projectId: process.env.GOOGLE_CLOUD_PROJECT_ID
+        stack: error.stack
       });
       throw error;
     }

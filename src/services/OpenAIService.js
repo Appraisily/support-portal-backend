@@ -1,6 +1,7 @@
 const OpenAI = require('openai');
 const logger = require('../utils/logger');
 const secretManager = require('../utils/secretManager');
+const ApiError = require('../utils/apiError');
 
 class OpenAIService {
   constructor() {
@@ -22,7 +23,8 @@ class OpenAIService {
       this.initPromise = null;
       logger.error('OpenAI service initialization failed', {
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
+        type: error.constructor.name
       });
       throw error;
     }
@@ -31,7 +33,7 @@ class OpenAIService {
   async _initialize() {
     const apiKey = await secretManager.getSecret('OPENAI_API_KEY');
     if (!apiKey) {
-      throw new Error('OpenAI API key not configured');
+      throw new ApiError(503, 'OpenAI API key not configured');
     }
 
     this.client = new OpenAI({
@@ -58,12 +60,15 @@ Key guidelines:
 ${customerInfo ? `Customer context:
 - Total purchases: ${customerInfo.summary.totalPurchases}
 - Customer status: ${customerInfo.summary.isExistingCustomer ? 'Existing' : 'New'} customer
-- Has pending appraisals: ${customerInfo.summary.hasPendingAppraisals ? 'Yes' : 'No'}` : ''}
+- Has pending appraisals: ${customerInfo.summary.hasPendingAppraisals ? 'Yes' : 'No'}
+- Total spent: $${customerInfo.summary.totalSpent}
+- Last purchase: ${customerInfo.summary.lastPurchaseDate || 'Never'}` : ''}
 
 Ticket information:
 - Subject: ${ticket.subject}
 - Category: ${ticket.category}
-- Priority: ${ticket.priority}`
+- Priority: ${ticket.priority}
+- Status: ${ticket.status}`
     };
 
     const validMessages = messages
@@ -81,7 +86,8 @@ Ticket information:
     logger.debug('Formatted messages for OpenAI:', {
       messageCount: validMessages.length,
       hasSystemPrompt: true,
-      firstMessage: validMessages[0]?.content.substring(0, 50)
+      firstMessage: validMessages[0]?.content.substring(0, 50),
+      lastMessage: validMessages[validMessages.length - 1]?.content.substring(0, 50)
     });
 
     return [systemPrompt, ...validMessages];
@@ -97,15 +103,17 @@ Ticket information:
         hasCustomerInfo: !!customerInfo
       });
 
-      const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
-
       if (!this.client) {
-        throw new Error('OpenAI client not initialized');
+        throw new ApiError(503, 'OpenAI client not initialized');
       }
+
+      const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
 
       logger.debug('Sending request to OpenAI', {
         model: 'gpt-4',
-        messageCount: formattedMessages.length
+        messageCount: formattedMessages.length,
+        systemPromptLength: formattedMessages[0].content.length,
+        totalTokenEstimate: formattedMessages.reduce((acc, msg) => acc + msg.content.length, 0) / 4
       });
 
       const completion = await this.client.chat.completions.create({
@@ -118,7 +126,7 @@ Ticket information:
       });
 
       if (!completion.choices || completion.choices.length === 0) {
-        throw new Error('No response received from OpenAI');
+        throw new ApiError(500, 'No response received from OpenAI');
       }
 
       const reply = completion.choices[0].message.content;
@@ -126,7 +134,10 @@ Ticket information:
       logger.info('OpenAI generated reply successfully', {
         ticketId: ticket.id,
         replyLength: reply.length,
-        firstLine: reply.split('\n')[0]
+        firstLine: reply.split('\n')[0],
+        model: completion.model,
+        promptTokens: completion.usage?.prompt_tokens,
+        completionTokens: completion.usage?.completion_tokens
       });
 
       return {
@@ -139,8 +150,19 @@ Ticket information:
         ticketId: ticket.id,
         error: error.message,
         stack: error.stack,
-        type: error.constructor.name
+        type: error.constructor.name,
+        isOpenAIError: error instanceof OpenAI.APIError,
+        statusCode: error.status || error.statusCode
       });
+
+      // Handle specific OpenAI errors
+      if (error instanceof OpenAI.APIError) {
+        throw new ApiError(
+          error.status || 500,
+          `OpenAI API error: ${error.message}`
+        );
+      }
+
       throw error;
     }
   }
