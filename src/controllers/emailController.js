@@ -11,14 +11,25 @@ exports.generateTicketReply = async (req, res) => {
   try {
     logger.info('Starting ticket reply generation', { 
       ticketId,
-      userId: req.user?.id 
+      userId: req.user?.id,
+      requestHeaders: {
+        'content-type': req.headers['content-type'],
+        'content-length': req.headers['content-length']
+      }
     });
 
-    // Initialize services
+    // Initialize OpenAI service first
+    logger.debug('Initializing OpenAI service...');
     await OpenAIService.ensureInitialized();
+    logger.debug('OpenAI service initialized');
+
+    // Initialize ticket service
+    logger.debug('Initializing ticket service...');
     await TicketService.ensureInitialized();
+    logger.debug('Ticket service initialized');
 
     // Get ticket with messages
+    logger.debug('Fetching ticket details...');
     const ticketResponse = await TicketService.getTicketById(ticketId);
     
     if (!ticketResponse?.success || !ticketResponse?.data) {
@@ -37,21 +48,22 @@ exports.generateTicketReply = async (req, res) => {
       throw new ApiError(400, 'No messages found in ticket');
     }
 
-    logger.info('Retrieved ticket data for AI generation:', {
+    logger.info('Retrieved ticket data for OpenAI generation:', {
       ticketId,
       subject: ticket.subject,
       messageCount: messages.length,
       hasCustomer: !!ticket.customer,
+      hasCustomerInfo: !!ticket.customerInfo,
       customerEmail: ticket.customer?.email,
       status: ticket.status,
-      priority: ticket.priority,
-      lastMessageTime: messages[messages.length - 1]?.createdAt
+      priority: ticket.priority
     });
 
     // Get customer info if available
     let customerInfo = null;
     if (ticket.customer?.email) {
       try {
+        logger.debug('Fetching customer info from sheets...');
         customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
         logger.info('Retrieved customer info:', {
           email: ticket.customer.email,
@@ -67,6 +79,7 @@ exports.generateTicketReply = async (req, res) => {
     }
 
     // Generate reply using OpenAI
+    logger.debug('Starting OpenAI reply generation...');
     const openAIResponse = await OpenAIService.generateTicketReply(
       ticket,
       messages,

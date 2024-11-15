@@ -9,19 +9,70 @@ const secretManager = require('./utils/secretManager');
 
 const app = express();
 
-// CORS configuration
+// CORS configuration with more detailed logging
 const corsOptions = {
-  origin: true, // Reflects the request origin. In production, set to your frontend domain
+  origin: function(origin, callback) {
+    // Allow all origins in development
+    if (process.env.NODE_ENV !== 'production') {
+      callback(null, true);
+      return;
+    }
+    
+    const allowedOrigins = [
+      'https://support-portal.appraisily.com',
+      'http://localhost:5173',
+      'http://localhost:3000'
+    ];
+    
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      logger.warn('Blocked request from unauthorized origin:', { origin });
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
-  maxAge: 86400 // 24 hours
+  maxAge: 86400, // 24 hours
+  optionsSuccessStatus: 204
 };
 
 // Middleware
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// Request logging middleware
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  
+  // Log request
+  logger.info('Incoming request:', {
+    method: req.method,
+    path: req.path,
+    query: req.query,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'content-length': req.headers['content-length'],
+      origin: req.headers.origin
+    },
+    ip: req.ip
+  });
+
+  // Log response
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    logger.info('Request completed:', {
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      duration: `${duration}ms`
+    });
+  });
+
+  next();
+});
 
 // Routes
 app.use('/api', routes);
