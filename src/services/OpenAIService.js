@@ -8,6 +8,7 @@ class OpenAIService {
     this.client = null;
     this.initialized = false;
     this.initPromise = null;
+    this.initializationError = null;
   }
 
   async ensureInitialized() {
@@ -23,9 +24,11 @@ class OpenAIService {
       this.initPromise = this._initialize();
       await this.initPromise;
       this.initialized = true;
+      this.initializationError = null;
       return true;
     } catch (error) {
       this.initPromise = null;
+      this.initializationError = error;
       logger.error('OpenAI service initialization failed', {
         error: error.message,
         stack: error.stack,
@@ -41,12 +44,29 @@ class OpenAIService {
       throw new ApiError(503, 'OpenAI API key not configured');
     }
 
-    this.client = new OpenAI({
-      apiKey: apiKey
-    });
+    try {
+      this.client = new OpenAI({
+        apiKey: apiKey
+      });
 
-    logger.info('OpenAI service initialized successfully');
-    return true;
+      // Test the API key with a simple completion
+      await this.client.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'system', content: 'Test connection' }],
+        max_tokens: 5
+      });
+
+      logger.info('OpenAI service initialized and tested successfully');
+      return true;
+    } catch (error) {
+      if (error instanceof OpenAI.APIError) {
+        throw new ApiError(
+          503,
+          `OpenAI API initialization failed: ${error.message}`
+        );
+      }
+      throw error;
+    }
   }
 
   _formatMessagesForOpenAI(ticket, messages, customerInfo) {
@@ -119,6 +139,10 @@ Ticket information:
   }
 
   async generateTicketReply(ticket, messages, customerInfo = null) {
+    if (this.initializationError) {
+      throw this.initializationError;
+    }
+
     await this.ensureInitialized();
 
     try {
@@ -141,6 +165,7 @@ Ticket information:
         totalTokenEstimate: formattedMessages.reduce((acc, msg) => acc + msg.content.length, 0) / 4
       });
 
+      const startTime = Date.now();
       const completion = await this.client.chat.completions.create({
         model: 'gpt-4',
         messages: formattedMessages,
@@ -155,6 +180,7 @@ Ticket information:
       }
 
       const reply = completion.choices[0].message.content;
+      const processingTime = Date.now() - startTime;
 
       logger.info('OpenAI generated reply successfully', {
         ticketId: ticket.id,
@@ -162,7 +188,8 @@ Ticket information:
         firstLine: reply.split('\n')[0],
         model: completion.model,
         promptTokens: completion.usage?.prompt_tokens,
-        completionTokens: completion.usage?.completion_tokens
+        completionTokens: completion.usage?.completion_tokens,
+        processingTime
       });
 
       return {

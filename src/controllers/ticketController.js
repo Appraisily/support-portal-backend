@@ -1,12 +1,8 @@
-const TicketService = require('../services/TicketService');
-const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
+const ticketService = require('../services/TicketService');
 const ApiError = require('../utils/apiError');
 
-// Create instance of TicketService
-const ticketService = new TicketService();
-
-exports.listTickets = async (req, res, next) => {
+exports.listTickets = async (req, res) => {
   try {
     const { status, priority, page = 1, limit = 10, sortBy, sortOrder } = req.query;
 
@@ -63,7 +59,7 @@ exports.listTickets = async (req, res, next) => {
   }
 };
 
-exports.getTicket = async (req, res, next) => {
+exports.getTicket = async (req, res) => {
   try {
     await ticketService.ensureInitialized();
 
@@ -88,7 +84,7 @@ exports.getTicket = async (req, res, next) => {
   }
 };
 
-exports.createTicket = async (req, res, next) => {
+exports.createTicket = async (req, res) => {
   try {
     await ticketService.ensureInitialized();
 
@@ -122,7 +118,7 @@ exports.createTicket = async (req, res, next) => {
   }
 };
 
-exports.updateTicket = async (req, res, next) => {
+exports.updateTicket = async (req, res) => {
   try {
     await ticketService.ensureInitialized();
 
@@ -158,7 +154,7 @@ exports.updateTicket = async (req, res, next) => {
   }
 };
 
-exports.replyToTicket = async (req, res, next) => {
+exports.replyToTicket = async (req, res) => {
   try {
     await ticketService.ensureInitialized();
 
@@ -191,21 +187,6 @@ exports.replyToTicket = async (req, res, next) => {
       throw new ApiError(500, 'Failed to create reply');
     }
 
-    // Send email reply if it's outbound
-    if (direction === 'outbound' && ticket.customer?.email) {
-      await GmailService.sendEmail(
-        ticket.customer.email,
-        `Re: ${ticket.subject}`,
-        content,
-        ticket.gmailThreadId
-      );
-
-      logger.info('Email reply sent successfully', {
-        ticketId,
-        customerEmail: ticket.customer.email
-      });
-    }
-    
     res.status(201).json({ 
       success: true, 
       data: reply 
