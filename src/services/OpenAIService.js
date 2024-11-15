@@ -8,10 +8,12 @@ class OpenAIService {
     this.client = null;
     this.initialized = false;
     this.initPromise = null;
+    this.apiKey = null;
+    this.baseURL = 'https://api.openai.com/v1'; // Default OpenAI API URL
   }
 
   async ensureInitialized() {
-    if (this.initialized && this.client) {
+    if (this.initialized && this.client && this.apiKey) {
       return true;
     }
 
@@ -27,7 +29,8 @@ class OpenAIService {
     } catch (error) {
       logger.error('OpenAI initialization failed:', {
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
+        baseURL: this.baseURL
       });
       throw error;
     } finally {
@@ -37,31 +40,39 @@ class OpenAIService {
 
   async _initialize() {
     try {
-      // Get API key from Secret Manager
-      const apiKey = await secretManager.getSecret('OPENAI_API_KEY');
+      this.apiKey = await secretManager.getSecret('OPENAI_API_KEY');
       
-      if (!apiKey) {
-        logger.error('OpenAI API key not found in Secret Manager');
+      if (!this.apiKey) {
         throw new ApiError(503, 'OpenAI API key not configured');
       }
 
-      // Initialize OpenAI client
+      logger.info('Retrieved OpenAI API key from Secret Manager');
+
+      // Initialize OpenAI client with appropriate configuration
       this.client = new OpenAI({
-        apiKey: apiKey,
+        apiKey: this.apiKey,
+        baseURL: this.baseURL,
         maxRetries: 3,
-        timeout: 30000
+        timeout: 60000, // 60 second timeout
+        defaultHeaders: {
+          'User-Agent': 'Appraisily/1.0',
+        },
+        defaultQuery: {
+          'api-version': '2023-05-15'
+        }
       });
 
       this.initialized = true;
-      logger.info('OpenAI service initialized successfully');
+      logger.info('OpenAI service initialized successfully', {
+        baseURL: this.baseURL,
+        timeout: 60000,
+        maxRetries: 3
+      });
       return true;
     } catch (error) {
       this.client = null;
       this.initialized = false;
-      
-      if (error instanceof OpenAI.APIError) {
-        throw new ApiError(503, `OpenAI API error: ${error.message}`);
-      }
+      this.apiKey = null;
       throw error;
     }
   }
@@ -77,22 +88,35 @@ class OpenAIService {
       logger.info('Starting OpenAI reply generation', {
         ticketId: ticket.id,
         messageCount: messages.length,
-        hasCustomerInfo: !!customerInfo
+        hasCustomerInfo: !!customerInfo,
+        baseURL: this.baseURL
       });
 
       const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
 
-      const startTime = Date.now();
+      // Log the exact prompt being sent
+      logger.info('Sending prompt to OpenAI:', {
+        ticketId: ticket.id,
+        messageCount: formattedMessages.length,
+        systemPrompt: formattedMessages[0].content,
+        messages: formattedMessages.slice(1).map(m => ({
+          role: m.role,
+          contentLength: m.content.length,
+          preview: m.content.substring(0, 100)
+        })),
+        endpoint: `${this.baseURL}/chat/completions`
+      });
+
+      // Make API call with explicit parameters
       const completion = await this.client.chat.completions.create({
         model: 'gpt-4',
         messages: formattedMessages,
         temperature: 0.7,
         max_tokens: 500,
         presence_penalty: 0.6,
-        frequency_penalty: 0.5
+        frequency_penalty: 0.5,
+        user: ticket.id // For OpenAI tracking
       });
-
-      const processingTime = Date.now() - startTime;
 
       if (!completion.choices || completion.choices.length === 0) {
         throw new ApiError(500, 'No response received from OpenAI');
@@ -103,9 +127,9 @@ class OpenAIService {
       logger.info('OpenAI reply generated successfully', {
         ticketId: ticket.id,
         replyLength: reply.length,
-        processingTime,
         tokenUsage: completion.usage,
-        previewText: reply.substring(0, 100)
+        previewReply: reply.substring(0, 100),
+        responseTime: Date.now() - completion.created * 1000
       });
 
       return {
@@ -114,21 +138,41 @@ class OpenAIService {
       };
 
     } catch (error) {
+      // Check if it's an OpenAI API error
+      const isOpenAIError = error.constructor.name === 'APIError';
+      
       logger.error('Error generating reply with OpenAI', {
         ticketId: ticket.id,
         error: error.message,
         stack: error.stack,
-        isOpenAIError: error instanceof OpenAI.APIError
+        isTimeout: error.message.includes('timed out'),
+        isRateLimitError: error.message.includes('rate limit'),
+        isAuthError: error.message.includes('authentication'),
+        isOpenAIError,
+        status: error.status,
+        type: error.type,
+        code: error.code,
+        param: error.param,
+        baseURL: this.baseURL
       });
 
-      if (error instanceof OpenAI.APIError) {
+      // Convert OpenAI errors to appropriate API errors
+      if (error.message.includes('timed out')) {
+        throw new ApiError(503, 'OpenAI request timed out. Please try again.');
+      } else if (error.message.includes('rate limit')) {
+        throw new ApiError(429, 'OpenAI rate limit exceeded. Please try again later.');
+      } else if (error.message.includes('authentication')) {
+        throw new ApiError(503, 'OpenAI authentication failed. Please check API key.');
+      } else if (isOpenAIError) {
         throw new ApiError(503, `OpenAI API error: ${error.message}`);
       }
-      throw error;
+
+      throw new ApiError(503, `Error connecting to OpenAI: ${error.message}`);
     }
   }
 
   _formatMessagesForOpenAI(ticket, messages, customerInfo) {
+    // Create system prompt
     const systemPrompt = {
       role: 'system',
       content: `You are a helpful customer support agent for Appraisily, a real estate appraisal software company.
@@ -156,19 +200,16 @@ Ticket information:
 - Status: ${ticket.status}`
     };
 
-    // Filter and validate messages
+    // Filter and format messages
     const validMessages = messages
       .filter(msg => {
         const content = msg.content?.trim();
         if (!content || content.length < 3) {
           logger.debug('Skipping invalid message:', {
-            content: content?.substring(0, 20),
-            reason: 'Too short or empty'
+            messageId: msg.id,
+            content: content,
+            reason: !content ? 'empty' : 'too short'
           });
-          return false;
-        }
-        if (['test', 'ok', 'ss', 'sa', 'aa'].includes(content.toLowerCase())) {
-          logger.debug('Skipping test message:', { content });
           return false;
         }
         return true;
@@ -182,10 +223,16 @@ Ticket information:
       throw new ApiError(400, 'No valid messages found for AI processing');
     }
 
+    // Sort messages by creation date if available
+    if (validMessages[0].createdAt) {
+      validMessages.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    }
+
     logger.debug('Formatted messages for OpenAI:', {
       messageCount: validMessages.length,
-      firstMessagePreview: validMessages[0]?.content.substring(0, 50),
-      lastMessagePreview: validMessages[validMessages.length - 1]?.content.substring(0, 50)
+      roles: validMessages.map(m => m.role),
+      lengths: validMessages.map(m => m.content.length),
+      totalTokenEstimate: validMessages.reduce((acc, m) => acc + m.content.length / 4, 0)
     });
 
     return [systemPrompt, ...validMessages];

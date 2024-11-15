@@ -12,7 +12,6 @@ exports.generateTicketReply = async (req, res) => {
       ticketId,
       userId: req.user?.id,
       requestHeaders: {
-        'content-type': req.headers['content-type'],
         'content-length': req.headers['content-length']
       }
     });
@@ -21,10 +20,6 @@ exports.generateTicketReply = async (req, res) => {
     const ticketResponse = await TicketService.getTicketById(ticketId);
     
     if (!ticketResponse?.success || !ticketResponse?.data) {
-      logger.error('Failed to fetch ticket:', {
-        ticketId,
-        response: ticketResponse
-      });
       throw new ApiError(404, 'Ticket not found');
     }
 
@@ -49,17 +44,12 @@ exports.generateTicketReply = async (req, res) => {
 
     // Generate reply using OpenAI
     const openAIResponse = await OpenAIService.generateTicketReply(
-      ticket,
-      messages,
+      ticket, 
+      messages, 
       ticket.customerInfo
     );
 
     if (!openAIResponse?.success || !openAIResponse?.reply) {
-      logger.error('OpenAI failed to generate reply:', {
-        ticketId,
-        error: openAIResponse?.error || 'No reply generated',
-        response: openAIResponse
-      });
       throw new ApiError(500, 'Failed to generate reply');
     }
 
@@ -68,7 +58,7 @@ exports.generateTicketReply = async (req, res) => {
       ticketId,
       replyLength: openAIResponse.reply.length,
       processingTime,
-      firstLine: openAIResponse.reply.split('\n')[0]
+      previewText: openAIResponse.reply.substring(0, 100)
     });
 
     res.json({
@@ -88,6 +78,7 @@ exports.generateTicketReply = async (req, res) => {
       statusCode: error.statusCode || 500
     });
 
+    // Send appropriate error response
     res.status(error.statusCode || 500).json({
       success: false,
       message: error.message || 'Failed to generate reply',

@@ -1,8 +1,8 @@
+const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const { initializeDatabase } = require('../config/database');
 const ApiError = require('../utils/apiError');
 const SheetsService = require('./SheetsService');
-const { Op } = require('sequelize');
 
 class TicketService {
   constructor() {
@@ -135,30 +135,33 @@ class TicketService {
             error: error.message,
             email: ticket.customer.email
           });
+          // Don't throw error, continue without customer info
+          customerInfo = null;
         }
       }
 
-      // Format messages
+      // Format messages ensuring all required fields are present
       const messages = ticket.messages?.map(msg => ({
         id: msg.id,
         content: msg.content || '',
         direction: msg.direction || 'inbound',
         createdAt: msg.createdAt?.toISOString(),
-        attachments: (msg.attachments || []).map(att => ({
+        attachments: msg.attachments?.map(att => ({
           id: att.id,
           name: att.filename,
           url: att.url
-        }))
+        })) || []
       })) || [];
 
       logger.info('Retrieved ticket with messages:', {
         ticketId: id,
         messageCount: messages.length,
+        hasCustomer: !!ticket.customer,
         hasCustomerInfo: !!customerInfo,
         messages: messages.map(m => ({
           id: m.id,
           direction: m.direction,
-          contentLength: m.content?.length,
+          contentLength: m.content?.length || 0,
           hasAttachments: m.attachments?.length > 0
         }))
       });
@@ -171,7 +174,11 @@ class TicketService {
           status: ticket.status,
           priority: ticket.priority,
           category: ticket.category,
-          customer: ticket.customer,
+          customer: {
+            id: ticket.customer?.id,
+            name: ticket.customer?.name,
+            email: ticket.customer?.email
+          },
           messages,
           customerInfo,
           createdAt: ticket.createdAt?.toISOString(),
