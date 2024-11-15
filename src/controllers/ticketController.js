@@ -1,13 +1,14 @@
 const TicketService = require('../services/TicketService');
 const GmailService = require('../services/GmailService');
 const logger = require('../utils/logger');
+const ApiError = require('../utils/apiError');
 
 // Create instance of TicketService
 const ticketService = new TicketService();
 
 exports.listTickets = async (req, res, next) => {
   try {
-    const { status, priority, page, limit, sortBy, sortOrder } = req.query;
+    const { status, priority, page = 1, limit = 10, sortBy, sortOrder } = req.query;
 
     logger.info('Listing tickets request:', {
       filters: { status, priority },
@@ -16,27 +17,49 @@ exports.listTickets = async (req, res, next) => {
       userId: req.user?.id
     });
 
+    // Ensure database is initialized
     await ticketService.ensureInitialized();
 
     const result = await ticketService.listTickets(
       { status, priority, sort: sortBy, order: sortOrder },
-      { page, limit }
+      { page: parseInt(page), limit: parseInt(limit) }
     );
+
+    if (!result) {
+      throw new ApiError(500, 'Failed to fetch tickets');
+    }
 
     res.json({
       success: true,
       data: {
-        tickets: result.tickets,
-        pagination: result.pagination
+        tickets: result.tickets || [],
+        pagination: {
+          total: result.pagination?.total || 0,
+          page: parseInt(page),
+          totalPages: result.pagination?.totalPages || 0
+        }
       }
     });
   } catch (error) {
     logger.error('Error listing tickets', {
       error: error.message,
+      stack: error.stack,
       filters: req.query,
       userId: req.user?.id
     });
-    next(error);
+    
+    // Send appropriate error response
+    if (error instanceof ApiError) {
+      res.status(error.statusCode).json({
+        success: false,
+        message: error.message
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error while fetching tickets'
+      });
+    }
   }
 };
 
@@ -49,11 +72,17 @@ exports.getTicket = async (req, res, next) => {
     });
 
     const response = await ticketService.getTicketById(req.params.id);
+    
+    if (!response) {
+      throw new ApiError(404, 'Ticket not found');
+    }
+
     res.json(response);
   } catch (error) {
     logger.error('Error getting ticket', {
       ticketId: req.params.id,
-      error: error.message
+      error: error.message,
+      stack: error.stack
     });
     next(error);
   }
@@ -71,6 +100,10 @@ exports.createTicket = async (req, res, next) => {
 
     const ticket = await ticketService.createTicket(req.body);
     
+    if (!ticket) {
+      throw new ApiError(500, 'Failed to create ticket');
+    }
+
     logger.info('Ticket created successfully', {
       ticketId: ticket.id
     });
@@ -82,6 +115,7 @@ exports.createTicket = async (req, res, next) => {
   } catch (error) {
     logger.error('Error creating ticket', {
       error: error.message,
+      stack: error.stack,
       body: req.body
     });
     next(error);
@@ -101,6 +135,10 @@ exports.updateTicket = async (req, res, next) => {
 
     const ticket = await ticketService.updateTicket(id, req.body);
     
+    if (!ticket) {
+      throw new ApiError(404, 'Ticket not found');
+    }
+
     logger.info('Ticket updated successfully', {
       ticketId: id
     });
@@ -112,6 +150,7 @@ exports.updateTicket = async (req, res, next) => {
   } catch (error) {
     logger.error('Error updating ticket', {
       error: error.message,
+      stack: error.stack,
       ticketId: req.params.id,
       updates: req.body
     });
@@ -134,14 +173,23 @@ exports.replyToTicket = async (req, res, next) => {
 
     // Get the ticket first to get customer email and thread ID
     const ticketResponse = await ticketService.getTicketById(ticketId);
+    
+    if (!ticketResponse || !ticketResponse.data) {
+      throw new ApiError(404, 'Ticket not found');
+    }
+
     const ticket = ticketResponse.data;
 
-    // Create the reply in the database - Note: userId is optional
+    // Create the reply in the database
     const reply = await ticketService.addReply(ticketId, {
       content,
       direction,
       attachments: req.body.attachments || []
     });
+
+    if (!reply) {
+      throw new ApiError(500, 'Failed to create reply');
+    }
 
     // Send email reply if it's outbound
     if (direction === 'outbound' && ticket.customer?.email) {
