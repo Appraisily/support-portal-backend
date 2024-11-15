@@ -51,19 +51,6 @@ class SheetsService {
 
   async _initialize() {
     try {
-      // Get service account credentials from Secret Manager
-      const serviceAccountJson = await secretManager.getSecret('service-account-json');
-      
-      // In development, we can proceed without credentials
-      if (this.mockMode && !serviceAccountJson) {
-        logger.warn('No service account credentials found, running in mock mode');
-        return true;
-      }
-
-      if (!serviceAccountJson) {
-        throw new ApiError(503, 'Service account credentials not found in Secret Manager');
-      }
-
       // Get spreadsheet IDs
       [
         this.salesSpreadsheetId,
@@ -87,17 +74,8 @@ class SheetsService {
         }
       }
 
-      // Parse service account credentials
-      let credentials;
-      try {
-        credentials = JSON.parse(serviceAccountJson);
-      } catch (error) {
-        throw new ApiError(503, 'Invalid service account credentials format in Secret Manager');
-      }
-
-      // Initialize auth with service account credentials
+      // Initialize auth with default credentials (uses service account in Cloud Run)
       this.auth = new google.auth.GoogleAuth({
-        credentials,
         scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly']
       });
 
@@ -110,8 +88,7 @@ class SheetsService {
       logger.info('Sheets service initialized successfully', {
         salesSpreadsheetId: this.salesSpreadsheetId,
         appraisalsSpreadsheetId: this.appraisalsSpreadsheetId,
-        mode: this.mockMode ? 'mock' : 'production',
-        hasCredentials: !!credentials
+        mode: this.mockMode ? 'mock' : 'production'
       });
 
       return true;
@@ -119,7 +96,7 @@ class SheetsService {
       logger.error('Failed to initialize Sheets service:', {
         error: error.message,
         stack: error.stack,
-        isSecretManagerError: error.message.includes('Secret Manager')
+        isAuthError: error.message.includes('authentication')
       });
 
       // Store initialization error
