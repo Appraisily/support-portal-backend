@@ -5,25 +5,40 @@ const logger = require('../utils/logger');
 
 exports.listTickets = async (req, res, next) => {
   try {
-    const { status, priority, page, limit, sortBy, sortOrder } = req.query;
+    const { 
+      status, 
+      priority, 
+      page = 1, 
+      limit = 10, 
+      sortBy, 
+      sortOrder,
+      search,
+      searchFields 
+    } = req.query;
 
     logger.info('Listing tickets request:', {
       filters: { status, priority },
       pagination: { page, limit },
       sorting: { sortBy, sortOrder },
+      search: { search, searchFields },
       userId: req.user?.id
     });
 
     const result = await TicketService.listTickets(
-      { status, priority, sort: sortBy, order: sortOrder },
+      { status, priority, sort: sortBy, order: sortOrder, search, searchFields },
       { page, limit }
     );
 
+    // Ensure we're sending the exact structure the frontend expects
     res.json({
       success: true,
       data: {
-        tickets: result.tickets,
-        pagination: result.pagination
+        tickets: result.data.tickets || [],
+        pagination: result.data.pagination || {
+          total: 0,
+          page: parseInt(page),
+          totalPages: 0
+        }
       }
     });
   } catch (error) {
