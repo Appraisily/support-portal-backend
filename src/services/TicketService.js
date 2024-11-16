@@ -209,7 +209,7 @@ class TicketService {
       }
 
       // Format messages ensuring all required fields are present
-      const messages = (ticket.messages || []).map(msg => ({
+      const messages = ticket.messages.map(msg => ({
         id: msg.id,
         content: msg.content || '',
         direction: msg.direction,
@@ -221,7 +221,6 @@ class TicketService {
         }))
       }));
 
-      // Log processed messages for debugging
       logger.info('Retrieved ticket with messages:', {
         ticketId: id,
         messageCount: messages.length,
@@ -296,7 +295,17 @@ class TicketService {
         { where: { id: ticketId } }
       );
 
-      return message;
+      return {
+        id: message.id,
+        content: message.content,
+        direction: message.direction,
+        createdAt: message.createdAt.toISOString(),
+        attachments: attachments.map(att => ({
+          id: att.id,
+          name: att.filename,
+          url: att.url
+        }))
+      };
     } catch (error) {
       logger.error('Error adding reply:', {
         error: error.message,
