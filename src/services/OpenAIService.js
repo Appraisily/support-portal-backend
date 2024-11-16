@@ -8,7 +8,6 @@ class OpenAIService {
     this.client = null;
     this.initialized = false;
     this.initPromise = null;
-    this.baseURL = 'https://api.openai.com/v1';
     this.timeout = 60000; // 60 seconds
     this.maxRetries = 3;
   }
@@ -43,16 +42,11 @@ class OpenAIService {
 
     this.client = new OpenAI({
       apiKey: apiKey,
-      baseURL: this.baseURL,
       timeout: this.timeout,
       maxRetries: this.maxRetries
     });
 
-    logger.info('OpenAI service initialized successfully', {
-      baseURL: this.baseURL,
-      timeout: this.timeout,
-      maxRetries: this.maxRetries
-    });
+    logger.info('OpenAI service initialized successfully');
   }
 
   _formatMessagesForOpenAI(ticket, messages, customerInfo) {
@@ -130,16 +124,12 @@ Ticket information:
       })
       .map(msg => ({
         role: msg.direction === 'inbound' ? 'user' : 'assistant',
-        content: [{ 
-          type: 'text', 
-          text: msg.content.trim() 
-        }]
+        content: msg.content.trim()
       }));
 
     // Check if we have any valid messages
     if (validMessages.length === 0) {
       logger.warn('No valid messages found for AI processing', {
-        ticketId: ticket.id,
         totalMessages: messages.length
       });
       throw new ApiError(400, 'No valid messages found for AI processing. Please ensure there is at least one customer message with meaningful content.');
@@ -148,11 +138,6 @@ Ticket information:
     // Check if we have at least one customer message
     const hasCustomerMessage = validMessages.some(m => m.role === 'user');
     if (!hasCustomerMessage) {
-      logger.warn('No valid customer messages found', {
-        ticketId: ticket.id,
-        totalMessages: messages.length,
-        validMessages: validMessages.length
-      });
       throw new ApiError(400, 'No customer messages found. Please ensure there is at least one message from the customer to generate a reply.');
     }
 
@@ -174,11 +159,10 @@ Ticket information:
     try {
       await this.ensureInitialized();
 
-      logger.info('Starting OpenAI reply generation', {
+      logger.info('Starting OpenAI reply generation', { 
         ticketId: ticket.id,
         messageCount: messages.length,
-        hasCustomerInfo: !!customerInfo,
-        baseURL: this.baseURL
+        hasCustomerInfo: !!customerInfo
       });
 
       const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
@@ -189,9 +173,12 @@ Ticket information:
         temperature: 0.7,
         max_tokens: 500,
         presence_penalty: 0.6,
-        frequency_penalty: 0.5,
-        timeout: this.timeout
+        frequency_penalty: 0.5
       });
+
+      if (!completion.choices?.[0]?.message?.content) {
+        throw new ApiError(500, 'No response received from OpenAI');
+      }
 
       const reply = completion.choices[0].message.content;
 
@@ -212,15 +199,21 @@ Ticket information:
         ticketId: ticket.id,
         error: error.message,
         stack: error.stack,
-        isOpenAIError: true
+        isOpenAIError: error.constructor.name === 'OpenAIError'
       });
 
-      // Enhance error message for better user feedback
-      const errorMessage = error.statusCode === 400 
-        ? error.message 
-        : 'Failed to generate AI reply. Please try again or contact support if the issue persists.';
+      // Handle specific OpenAI errors
+      if (error.constructor.name === 'OpenAIError') {
+        throw new ApiError(503, `OpenAI API error: ${error.message}`);
+      }
 
-      throw new ApiError(error.statusCode || 503, errorMessage);
+      // Handle validation errors
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      // Handle other errors
+      throw new ApiError(500, 'Failed to generate AI reply. Please try again later.');
     }
   }
 }

@@ -64,6 +64,10 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id'
       },
       allowNull: true
+    },
+    gmailMessageId: {
+      type: DataTypes.STRING,
+      allowNull: true
     }
   }, {
     sequelize,

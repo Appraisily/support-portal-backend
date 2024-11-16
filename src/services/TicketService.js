@@ -39,6 +39,139 @@ class TicketService {
     }
   }
 
+  async getTicketById(id) {
+    await this.ensureInitialized();
+
+    try {
+      // Get ticket with all related data
+      const ticket = await this.models.Ticket.findByPk(id, {
+        include: [
+          {
+            model: this.models.Customer,
+            as: 'customer',
+            attributes: ['id', 'name', 'email']
+          },
+          {
+            model: this.models.Message,
+            as: 'messages',
+            attributes: ['id', 'content', 'direction', 'createdAt', 'gmailMessageId'],
+            include: [
+              {
+                model: this.models.Attachment,
+                as: 'attachments',
+                attributes: ['id', 'filename', 'url'],
+                through: { attributes: [] }
+              }
+            ],
+            order: [['createdAt', 'ASC']]
+          }
+        ]
+      });
+
+      if (!ticket) {
+        throw new ApiError(404, 'Ticket not found');
+      }
+
+      // Get customer info from sheets if customer exists
+      let customerInfo = null;
+      if (ticket.customer?.email) {
+        try {
+          customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
+        } catch (error) {
+          logger.warn('Failed to get customer info:', {
+            error: error.message,
+            email: ticket.customer.email
+          });
+          customerInfo = {
+            sales: [],
+            pendingAppraisals: [],
+            completedAppraisals: [],
+            summary: {
+              totalPurchases: 0,
+              totalSpent: 0,
+              hasPendingAppraisals: false,
+              hasCompletedAppraisals: false,
+              totalAppraisals: 0,
+              isExistingCustomer: false,
+              lastPurchaseDate: null,
+              stripeCustomerId: null
+            }
+          };
+        }
+      }
+
+      // Find the first inbound message with a Gmail message ID
+      const firstInboundMessage = ticket.messages.find(
+        msg => msg.direction === 'inbound' && msg.gmailMessageId
+      );
+
+      // Format messages ensuring all required fields are present
+      const messages = ticket.messages.map(msg => {
+        const content = msg.content?.trim() || '';
+        
+        return {
+          id: msg.id,
+          content: content,
+          direction: msg.direction,
+          createdAt: msg.createdAt.toISOString(),
+          gmailMessageId: msg.gmailMessageId,
+          attachments: (msg.attachments || []).map(att => ({
+            id: att.id,
+            name: att.filename,
+            url: att.url
+          }))
+        };
+      });
+
+      logger.info('Retrieved ticket with messages:', {
+        ticketId: id,
+        messageCount: messages.length,
+        hasCustomer: !!ticket.customer,
+        hasCustomerInfo: !!customerInfo,
+        hasGmailMessageId: !!firstInboundMessage?.gmailMessageId,
+        messages: messages.map(m => ({
+          id: m.id,
+          direction: m.direction,
+          contentLength: m.content.length,
+          content: m.content.substring(0, 50) + (m.content.length > 50 ? '...' : ''),
+          hasAttachments: m.attachments?.length > 0,
+          hasGmailId: !!m.gmailMessageId
+        }))
+      });
+
+      // Return response in the exact format expected by frontend
+      return {
+        success: true,
+        data: {
+          id: ticket.id,
+          subject: ticket.subject,
+          status: ticket.status,
+          priority: ticket.priority,
+          category: ticket.category || 'general',
+          customer: ticket.customer ? {
+            id: ticket.customer.id,
+            name: ticket.customer.name,
+            email: ticket.customer.email
+          } : null,
+          messages: messages,
+          customerInfo: customerInfo,
+          createdAt: ticket.createdAt.toISOString(),
+          updatedAt: ticket.updatedAt.toISOString(),
+          lastMessageAt: ticket.lastMessageAt?.toISOString(),
+          gmailThreadId: ticket.gmailThreadId,
+          gmailMessageId: firstInboundMessage?.gmailMessageId || null
+        }
+      };
+    } catch (error) {
+      logger.error('Error getting ticket:', {
+        error: error.message,
+        stack: error.stack,
+        ticketId: id
+      });
+      throw error;
+    }
+  }
+
   async listTickets({ status, priority, sort, order, search, searchFields }, { page = 1, limit = 10 }) {
     await this.ensureInitialized();
 
@@ -107,9 +240,32 @@ class TicketService {
         distinct: true
       });
 
+      // Format tickets for response
+      const formattedTickets = tickets.map(ticket => ({
+        id: ticket.id,
+        subject: ticket.subject,
+        status: ticket.status,
+        priority: ticket.priority,
+        category: ticket.category || 'general',
+        customer: ticket.customer ? {
+          id: ticket.customer.id,
+          name: ticket.customer.name,
+          email: ticket.customer.email
+        } : null,
+        messages: ticket.messages.map(msg => ({
+          id: msg.id,
+          content: msg.content?.trim() || '',
+          direction: msg.direction,
+          createdAt: msg.createdAt.toISOString()
+        })),
+        createdAt: ticket.createdAt.toISOString(),
+        updatedAt: ticket.updatedAt.toISOString(),
+        lastMessageAt: ticket.lastMessageAt?.toISOString()
+      }));
+
       logger.info('Tickets retrieved successfully', {
         totalCount: count,
-        pageCount: tickets.length,
+        pageCount: formattedTickets.length,
         page,
         limit
       });
@@ -117,17 +273,7 @@ class TicketService {
       return {
         success: true,
         data: {
-          tickets: tickets.map(ticket => ({
-            id: ticket.id,
-            subject: ticket.subject,
-            status: ticket.status,
-            priority: ticket.priority,
-            customer: ticket.customer,
-            lastMessage: ticket.messages[0],
-            createdAt: ticket.createdAt.toISOString(),
-            updatedAt: ticket.updatedAt.toISOString(),
-            lastMessageAt: ticket.lastMessageAt?.toISOString()
-          })),
+          tickets: formattedTickets,
           pagination: {
             total: count,
             page: parseInt(page),
@@ -142,125 +288,6 @@ class TicketService {
         stack: error.stack,
         filters: { status, priority, sort, order, search, searchFields },
         pagination: { page, limit }
-      });
-      throw error;
-    }
-  }
-
-  async getTicketById(id) {
-    await this.ensureInitialized();
-
-    try {
-      // Get ticket with all related data
-      const ticket = await this.models.Ticket.findByPk(id, {
-        include: [
-          {
-            model: this.models.Customer,
-            as: 'customer',
-            attributes: ['id', 'name', 'email']
-          },
-          {
-            model: this.models.Message,
-            as: 'messages',
-            attributes: ['id', 'content', 'direction', 'createdAt'],
-            include: [
-              {
-                model: this.models.Attachment,
-                as: 'attachments',
-                attributes: ['id', 'filename', 'url'],
-                through: { attributes: [] }
-              }
-            ],
-            order: [['createdAt', 'ASC']]
-          }
-        ]
-      });
-
-      if (!ticket) {
-        throw new ApiError(404, 'Ticket not found');
-      }
-
-      // Get customer info from sheets if customer exists
-      let customerInfo = null;
-      if (ticket.customer?.email) {
-        try {
-          customerInfo = await SheetsService.getCustomerInfo(ticket.customer.email);
-        } catch (error) {
-          logger.warn('Failed to get customer info:', {
-            error: error.message,
-            email: ticket.customer.email
-          });
-          customerInfo = {
-            sales: [],
-            pendingAppraisals: [],
-            completedAppraisals: [],
-            summary: {
-              totalPurchases: 0,
-              totalSpent: 0,
-              hasPendingAppraisals: false,
-              hasCompletedAppraisals: false,
-              totalAppraisals: 0,
-              isExistingCustomer: false,
-              lastPurchaseDate: null,
-              stripeCustomerId: null
-            }
-          };
-        }
-      }
-
-      // Format messages ensuring all required fields are present
-      const messages = ticket.messages.map(msg => ({
-        id: msg.id,
-        content: msg.content || '',
-        direction: msg.direction,
-        createdAt: msg.createdAt.toISOString(),
-        attachments: (msg.attachments || []).map(att => ({
-          id: att.id,
-          name: att.filename,
-          url: att.url
-        }))
-      }));
-
-      logger.info('Retrieved ticket with messages:', {
-        ticketId: id,
-        messageCount: messages.length,
-        hasCustomer: !!ticket.customer,
-        hasCustomerInfo: !!customerInfo,
-        messages: messages.map(m => ({
-          id: m.id,
-          direction: m.direction,
-          contentLength: m.content.length,
-          hasAttachments: m.attachments?.length > 0
-        }))
-      });
-
-      // Return response in the exact format expected by frontend
-      return {
-        success: true,
-        data: {
-          id: ticket.id,
-          subject: ticket.subject,
-          status: ticket.status,
-          priority: ticket.priority,
-          category: ticket.category || 'general',
-          customer: ticket.customer ? {
-            id: ticket.customer.id,
-            name: ticket.customer.name,
-            email: ticket.customer.email
-          } : null,
-          messages: messages,
-          customerInfo: customerInfo,
-          createdAt: ticket.createdAt.toISOString(),
-          updatedAt: ticket.updatedAt.toISOString(),
-          lastMessageAt: ticket.lastMessageAt?.toISOString(),
-          gmailThreadId: ticket.gmailThreadId
-        }
-      };
-    } catch (error) {
-      logger.error('Error getting ticket:', {
-        error: error.message,
-        stack: error.stack,
-        ticketId: id
       });
       throw error;
     }
@@ -295,17 +322,7 @@ class TicketService {
         { where: { id: ticketId } }
       );
 
-      return {
-        id: message.id,
-        content: message.content,
-        direction: message.direction,
-        createdAt: message.createdAt.toISOString(),
-        attachments: attachments.map(att => ({
-          id: att.id,
-          name: att.filename,
-          url: att.url
-        }))
-      };
+      return message;
     } catch (error) {
       logger.error('Error adding reply:', {
         error: error.message,

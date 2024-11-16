@@ -251,3 +251,28 @@ Error Response (400, 401, 404, 500):
   "message": string
 }
 ```
+
+### OpenAI Integration Notes
+
+The OpenAI chat completion endpoint requires a specific format for messages. Here's an example of the expected format:
+
+```bash
+curl "https://api.openai.com/v1/chat/completions" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $OPENAI_API_KEY" \
+    -d '{
+        "model": "gpt-4",
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a helpful assistant."
+            },
+            {
+                "role": "user",
+                "content": "Write a haiku about recursion in programming."
+            }
+        ]
+    }'
+```
+
+Important: The OpenAI service has been updated to match this exact format. Messages are now sent as an array of objects with `role` and `content` properties, rather than using the deprecated format. The service automatically formats ticket messages and context to match this structure before making the API call.
