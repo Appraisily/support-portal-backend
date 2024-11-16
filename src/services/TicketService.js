@@ -131,7 +131,8 @@ class TicketService {
           pagination: {
             total: count,
             page: parseInt(page),
-            totalPages: Math.ceil(count / limit)
+            totalPages: Math.ceil(count / limit),
+            limit: parseInt(limit)
           }
         }
       };
@@ -208,29 +209,17 @@ class TicketService {
       }
 
       // Format messages ensuring all required fields are present
-      const messages = ticket.messages.map(msg => {
-        // Log raw message for debugging
-        logger.debug('Processing message:', {
-          id: msg.id,
-          hasContent: !!msg.content,
-          contentType: typeof msg.content,
-          contentLength: msg.content?.length
-        });
-
-        return {
-          id: msg.id,
-          content: msg.content || '',
-          direction: msg.direction,
-          createdAt: msg.createdAt.toISOString(),
-          ...(msg.attachments?.length > 0 && {
-            attachments: msg.attachments.map(att => ({
-              id: att.id,
-              name: att.filename,
-              url: att.url
-            }))
-          })
-        };
-      });
+      const messages = (ticket.messages || []).map(msg => ({
+        id: msg.id,
+        content: msg.content || '',
+        direction: msg.direction,
+        createdAt: msg.createdAt.toISOString(),
+        attachments: (msg.attachments || []).map(att => ({
+          id: att.id,
+          name: att.filename,
+          url: att.url
+        }))
+      }));
 
       // Log processed messages for debugging
       logger.info('Retrieved ticket with messages:', {
@@ -242,7 +231,6 @@ class TicketService {
           id: m.id,
           direction: m.direction,
           contentLength: m.content.length,
-          content: m.content.substring(0, 50), // Log first 50 chars for debugging
           hasAttachments: m.attachments?.length > 0
         }))
       });

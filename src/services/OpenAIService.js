@@ -94,12 +94,17 @@ Ticket information:
       .filter(msg => {
         const content = msg.content?.trim();
         
-        // Skip empty or very short messages
-        if (!content || content.length < 3) {
-          logger.debug('Skipping invalid message:', {
+        // Skip empty messages
+        if (!content) {
+          logger.debug('Skipping empty message:', { messageId: msg.id });
+          return false;
+        }
+
+        // Skip very short messages unless they're part of a conversation
+        if (content.length < 5 && sortedMessages.length === 1) {
+          logger.debug('Skipping short standalone message:', {
             messageId: msg.id,
-            content: content,
-            reason: !content ? 'empty' : 'too short'
+            content: content
           });
           return false;
         }
@@ -113,7 +118,7 @@ Ticket information:
         ];
         
         const lowerContent = content.toLowerCase();
-        if (commonSignatures.some(sig => lowerContent.includes(sig))) {
+        if (commonSignatures.some(sig => lowerContent.includes(sig)) && content.length < 200) {
           logger.debug('Skipping signature message:', {
             messageId: msg.id,
             preview: content.substring(0, 50)
@@ -131,7 +136,16 @@ Ticket information:
         }]
       }));
 
-    // Ensure we have at least one customer message
+    // Check if we have any valid messages
+    if (validMessages.length === 0) {
+      logger.warn('No valid messages found for AI processing', {
+        ticketId: ticket.id,
+        totalMessages: messages.length
+      });
+      throw new ApiError(400, 'No valid messages found for AI processing. Please ensure there is at least one customer message with meaningful content.');
+    }
+
+    // Check if we have at least one customer message
     const hasCustomerMessage = validMessages.some(m => m.role === 'user');
     if (!hasCustomerMessage) {
       logger.warn('No valid customer messages found', {
@@ -139,22 +153,18 @@ Ticket information:
         totalMessages: messages.length,
         validMessages: validMessages.length
       });
-      throw new ApiError(400, 'No valid customer messages found for AI processing');
+      throw new ApiError(400, 'No customer messages found. Please ensure there is at least one message from the customer to generate a reply.');
     }
 
     // Keep only the last 5 relevant messages for context
     const relevantMessages = validMessages.slice(-5);
 
-    logger.info('Sending prompt to OpenAI:', {
+    logger.info('Prepared messages for OpenAI:', {
       ticketId: ticket.id,
-      messageCount: relevantMessages.length,
-      systemPrompt: systemPrompt.content,
-      messages: relevantMessages.map(m => ({
-        role: m.role,
-        contentLength: m.content[0].text.length,
-        preview: m.content[0].text.substring(0, 50)
-      })),
-      endpoint: `${this.baseURL}/chat/completions`
+      totalMessages: messages.length,
+      validMessages: validMessages.length,
+      relevantMessages: relevantMessages.length,
+      hasCustomerMessage
     });
 
     return [systemPrompt, ...relevantMessages];
@@ -205,7 +215,12 @@ Ticket information:
         isOpenAIError: true
       });
 
-      throw new ApiError(503, `OpenAI API error: ${error.message}`);
+      // Enhance error message for better user feedback
+      const errorMessage = error.statusCode === 400 
+        ? error.message 
+        : 'Failed to generate AI reply. Please try again or contact support if the issue persists.';
+
+      throw new ApiError(error.statusCode || 503, errorMessage);
     }
   }
 }

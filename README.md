@@ -52,3 +52,202 @@ https://[cloud-run-url]/_health
 ```
 
 Note: First request might take a few seconds for container initialization and database connection.
+
+## API Documentation
+
+### List Tickets
+
+```
+GET /api/tickets
+```
+
+Query Parameters (all optional):
+- `status`: 'open' | 'in_progress' | 'closed'
+- `page`: number (default: 1)
+- `limit`: number (default: 10)
+- `sortBy`: string (default: 'lastMessageAt')
+- `sortOrder`: 'asc' | 'desc'
+- `search`: string
+- `searchFields`: string[] (default: ['email', 'subject', 'content'])
+
+Expected Response:
+```json
+{
+  "success": true,
+  "data": {
+    "tickets": [
+      {
+        "id": string,
+        "subject": string,
+        "status": "open" | "in_progress" | "closed",
+        "priority": "low" | "medium" | "high" | "urgent",
+        "category": string,
+        "customer": {
+          "id": string,
+          "name": string,
+          "email": string
+        },
+        "messages": [
+          {
+            "id": string,
+            "content": string,
+            "direction": "inbound" | "outbound",
+            "createdAt": string,
+            "attachments?": [
+              {
+                "id": string,
+                "name": string,
+                "url": string
+              }
+            ]
+          }
+        ],
+        "createdAt": string,
+        "updatedAt": string,
+        "lastMessageAt": string
+      }
+    ],
+    "pagination": {
+      "total": number,
+      "page": number,
+      "totalPages": number,
+      "limit": number
+    }
+  }
+}
+```
+
+Note: The frontend maps the backend statuses as follows:
+- 'open' → 'pending'
+- 'in_progress' → 'in_progress'
+- 'closed' → 'closed'
+
+### Get Single Ticket
+
+```
+GET /api/tickets/:id
+```
+
+Required Path Parameter:
+- `id`: string (ticket ID)
+
+Expected Response:
+```json
+{
+  "success": true,
+  "data": {
+    "id": string,
+    "subject": string,
+    "status": "open" | "in_progress" | "closed",
+    "priority": "low" | "medium" | "high" | "urgent",
+    "category": string,
+    "customer": {
+      "id": string,
+      "name": string,
+      "email": string
+    },
+    "messages": [
+      {
+        "id": string,
+        "content": string,
+        "direction": "inbound" | "outbound",
+        "createdAt": string,
+        "attachments": [
+          {
+            "id": string,
+            "name": string,
+            "url": string
+          }
+        ]
+      }
+    ],
+    "customerInfo": {
+      "sales": [
+        {
+          "sessionId": string,
+          "chargeId": string,
+          "stripeCustomerId": string,
+          "customerName": string,
+          "amount": number,
+          "date": string
+        }
+      ],
+      "pendingAppraisals": [
+        {
+          "date": string,
+          "serviceType": string,
+          "sessionId": string,
+          "status": string,
+          "editLink": string
+        }
+      ],
+      "completedAppraisals": [
+        {
+          "date": string,
+          "serviceType": string,
+          "sessionId": string,
+          "status": string,
+          "editLink": string,
+          "appraisersDescription": string,
+          "finalDescription": string,
+          "pdfLink": string,
+          "docLink": string
+        }
+      ],
+      "summary": {
+        "totalPurchases": number,
+        "totalSpent": number,
+        "hasPendingAppraisals": boolean,
+        "hasCompletedAppraisals": boolean,
+        "totalAppraisals": number,
+        "isExistingCustomer": boolean,
+        "lastPurchaseDate": string,
+        "stripeCustomerId": string
+      }
+    },
+    "createdAt": string,
+    "updatedAt": string,
+    "lastMessageAt": string,
+    "gmailThreadId": string
+  }
+}
+```
+
+The response includes all ticket details, messages history, customer information, sales history, and appraisals data needed to display the full ticket view in the frontend.
+
+### Generate AI Reply
+
+```
+POST /api/email/generate-ticket-reply/:ticketId
+```
+
+Required Path Parameter:
+- `ticketId`: string (ID of the ticket)
+
+Required Headers:
+- `Authorization`: Bearer token for authentication
+- `Content-Type`: application/json
+
+Expected Response:
+```json
+{
+  "success": true,
+  "ticketId": string,
+  "generatedReply": string
+}
+```
+
+The backend will:
+1. Fetch the ticket details including all messages
+2. Get customer information from spreadsheets
+3. Format all context for OpenAI
+4. Generate response using GPT-4
+5. Return the generated response
+
+Error Response (400, 401, 404, 500):
+```json
+{
+  "success": false,
+  "message": string
+}
+```
