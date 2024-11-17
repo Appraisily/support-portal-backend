@@ -224,6 +224,16 @@ POST /api/email/generate-ticket-reply/:ticketId
 Required Path Parameter:
 - `ticketId`: string (ID of the ticket)
 
+Request Body:
+```json
+{
+  "ticketContent": string,    // Original ticket content
+  "customerHistory": string,  // Previous interactions with customer (optional)
+  "priority": string,        // Ticket priority level (low/medium/high)
+  "category": string         // Support category (billing/technical/general)
+}
+```
+
 Required Headers:
 - `Authorization`: Bearer token for authentication
 - `Content-Type`: application/json

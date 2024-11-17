@@ -83,27 +83,32 @@ Ticket information:
       new Date(a.createdAt) - new Date(b.createdAt)
     );
 
-    // Filter and format messages
+    // Filter and format messages with more lenient validation
     const validMessages = sortedMessages
       .filter(msg => {
         const content = msg.content?.trim();
         
-        // Skip empty messages
+        // Skip completely empty messages
         if (!content) {
           logger.debug('Skipping empty message:', { messageId: msg.id });
           return false;
         }
 
-        // Skip very short messages unless they're part of a conversation
-        if (content.length < 5 && sortedMessages.length === 1) {
-          logger.debug('Skipping short standalone message:', {
+        // Include all non-empty messages in development/test environments
+        if (process.env.NODE_ENV !== 'production') {
+          return true;
+        }
+
+        // In production, apply stricter validation
+        if (content.length < 3) {
+          logger.debug('Skipping very short message:', {
             messageId: msg.id,
             content: content
           });
           return false;
         }
 
-        // Skip messages that are just signatures or greetings
+        // Skip messages that are just signatures
         const commonSignatures = [
           'saludos cordiales',
           'best regards',
@@ -127,18 +132,33 @@ Ticket information:
         content: msg.content.trim()
       }));
 
+    // Log validation results
+    logger.info('Message validation results:', {
+      totalMessages: messages.length,
+      validMessages: validMessages.length,
+      invalidMessages: messages.length - validMessages.length,
+      messageDirections: messages.map(m => m.direction)
+    });
+
     // Check if we have any valid messages
     if (validMessages.length === 0) {
       logger.warn('No valid messages found for AI processing', {
-        totalMessages: messages.length
+        totalMessages: messages.length,
+        messageContents: messages.map(m => ({
+          id: m.id,
+          direction: m.direction,
+          content: m.content?.substring(0, 50)
+        }))
       });
-      throw new ApiError(400, 'No valid messages found for AI processing. Please ensure there is at least one customer message with meaningful content.');
+      throw new ApiError(400, 'No valid messages found for AI processing. Please ensure there is at least one message with meaningful content.');
     }
 
-    // Check if we have at least one customer message
-    const hasCustomerMessage = validMessages.some(m => m.role === 'user');
-    if (!hasCustomerMessage) {
-      throw new ApiError(400, 'No customer messages found. Please ensure there is at least one message from the customer to generate a reply.');
+    // In development/test, don't require customer messages
+    if (process.env.NODE_ENV === 'production') {
+      const hasCustomerMessage = validMessages.some(m => m.role === 'user');
+      if (!hasCustomerMessage) {
+        throw new ApiError(400, 'No customer messages found. Please ensure there is at least one message from the customer to generate a reply.');
+      }
     }
 
     // Keep only the last 5 relevant messages for context
@@ -149,7 +169,7 @@ Ticket information:
       totalMessages: messages.length,
       validMessages: validMessages.length,
       relevantMessages: relevantMessages.length,
-      hasCustomerMessage
+      messageRoles: relevantMessages.map(m => m.role)
     });
 
     return [systemPrompt, ...relevantMessages];
