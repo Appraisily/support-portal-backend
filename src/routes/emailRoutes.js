@@ -18,12 +18,16 @@ router.use((req, res, next) => {
   next();
 });
 
+// Configure express to parse JSON
+router.use(express.json());
+
 // Generate AI reply for a ticket
 router.post('/generate-ticket-reply/:ticketId', validateAuth, async (req, res, next) => {
   try {
     logger.info('Starting AI reply generation request:', {
       ticketId: req.params.ticketId,
-      userId: req.user?.id
+      userId: req.user?.id,
+      body: req.body
     });
     await emailController.generateTicketReply(req, res);
   } catch (error) {

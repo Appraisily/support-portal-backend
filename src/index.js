@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const bodyParser = require('body-parser');
 const routes = require('./routes');
 const logger = require('./utils/logger');
 const { initializeDatabase } = require('./config/database');
@@ -23,6 +24,8 @@ const corsOptions = {
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 // Disable caching for all routes
 app.use((req, res, next) => {
@@ -43,6 +46,7 @@ app.use((req, res, next) => {
     method: req.method,
     path: req.path,
     query: req.query,
+    body: req.body,
     headers: {
       'content-type': req.headers['content-type'],
       'content-length': req.headers['content-length'],

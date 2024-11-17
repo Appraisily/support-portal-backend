@@ -35,6 +35,7 @@ class OpenAIService {
   async _initialize() {
     const apiKey = await secretManager.getSecret('OPENAI_API_KEY');
     if (!apiKey) {
+      logger.error('OpenAI API key not found in Secret Manager');
       throw new Error('OpenAI API key not configured');
     }
 
@@ -45,6 +46,22 @@ class OpenAIService {
       timeout: this.timeout,
       maxRetries: this.maxRetries
     });
+
+    // Test the API key with a simple completion
+    try {
+      await this.client.chat.completions.create({
+        model: 'gpt-4',
+        messages: [{ role: 'system', content: 'Test message' }],
+        max_tokens: 5
+      });
+      logger.info('OpenAI API key validated successfully');
+    } catch (error) {
+      logger.error('OpenAI API key validation failed:', {
+        error: error.message,
+        stack: error.stack
+      });
+      throw new Error('Invalid OpenAI API key');
+    }
 
     logger.info('OpenAI service initialized successfully');
   }
@@ -187,6 +204,12 @@ Ticket information:
 
       const formattedMessages = this._formatMessagesForOpenAI(ticket, messages, customerInfo);
 
+      logger.info('Making OpenAI API call', {
+        ticketId: ticket.id,
+        messageCount: formattedMessages.length,
+        model: 'gpt-4'
+      });
+
       const completion = await this.client.chat.completions.create({
         model: 'gpt-4',
         messages: formattedMessages,
@@ -197,6 +220,10 @@ Ticket information:
       });
 
       if (!completion.choices?.[0]?.message?.content) {
+        logger.error('Empty response from OpenAI', {
+          ticketId: ticket.id,
+          completion: completion
+        });
         throw new ApiError(500, 'No response received from OpenAI');
       }
 
@@ -206,7 +233,8 @@ Ticket information:
         ticketId: ticket.id,
         replyLength: reply.length,
         tokensUsed: completion.usage?.total_tokens,
-        model: completion.model
+        model: completion.model,
+        replyPreview: reply.substring(0, 100)
       });
 
       return {
@@ -219,7 +247,10 @@ Ticket information:
         ticketId: ticket.id,
         error: error.message,
         stack: error.stack,
-        isOpenAIError: error.constructor.name === 'OpenAIError'
+        isOpenAIError: error.constructor.name === 'OpenAIError',
+        errorCode: error.code,
+        errorStatus: error.status,
+        errorType: error.type
       });
 
       // Handle specific OpenAI errors

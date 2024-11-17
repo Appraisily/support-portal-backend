@@ -11,7 +11,9 @@ exports.generateTicketReply = async (req, res) => {
     logger.info('Starting ticket reply generation', { 
       ticketId,
       userId: req.user?.id,
+      requestBody: req.body,
       requestHeaders: {
+        'content-type': req.headers['content-type'],
         'content-length': req.headers['content-length']
       }
     });
